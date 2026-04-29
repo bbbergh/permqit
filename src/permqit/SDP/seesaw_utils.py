@@ -86,7 +86,6 @@ def get_coefficient_adjoint_RS(X, d_R, basis: 'EndSnOrbitBasis'):
         Adjoint coefficients, same shape and device as X
     """
     m_S = basis.size()
-    X = backend.to_gpu(X)
     T = X.reshape(d_R, d_R, m_S)
     T_perm = xp.transpose(T, (2, 1, 0))
     idx = basis.transpose_index_lookup()
@@ -109,7 +108,6 @@ def get_coefficient_adjoint_SR(X, d_R, basis: 'EndSnOrbitBasis'):
         Adjoint coefficients, same shape and device as X
     """
     m_S = basis.size()
-    X = backend.to_gpu(X)
     T = X.reshape(m_S, d_R, d_R)
     T_perm = xp.transpose(T, (2, 1, 0))
     idx = basis.transpose_index_lookup()
@@ -144,7 +142,7 @@ def get_coefficient_adjoint_general_RS(
     for s in m_sizes:
         m_tot *= s
 
-    X_arr = backend.to_gpu(X)
+    X_arr = X
     T = X_arr.reshape(d_R, d_R, m_tot)
     T_perm = xp.transpose(T, (2, 1, 0))  # (m_tot, d_R, d_R) — SR layout with transposed R
 
@@ -182,7 +180,7 @@ def get_coefficient_adjoint_general_SR(
     for s in m_sizes:
         m_tot *= s
 
-    X_arr = backend.to_gpu(X)
+    X_arr = X
     T = X_arr.reshape(m_tot, d_R, d_R)
     T_perm = xp.transpose(T, (2, 1, 0))  # (d_R, d_R, m_tot) — RS layout with transposed R
 
