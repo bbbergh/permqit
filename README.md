@@ -13,13 +13,13 @@ Unfortunately, on MacOS Intel (x86-64) Python 3.14 is not supported due to some 
 
 ## Repository Overview
 - Most of the representation theoretic constructions from Section III of the paper are in `representation/`, in particular the block-diagonalizing *-isomorphisms, as well as the constructions for channel composition and partial traces
-- The `SDP/` folder contains an implementation of the symmetric seesaw method for channel fidelity using SDP solvers
-- The `power_method/` folder contains an implementation of the power-method for channel fidelity. This code is also GPU accelerated if a GPU is available.
+- The `SDP/` folder contains an implementation of the symmetric seesaw method for channel fidelity using SDP solvers from Section IV of the paper
+- The `power_method/` folder contains an implementation of the power-method for channel fidelity from Section IV of the paper. This code is also GPU accelerated if a GPU is available.
 - the `algebra/` folder contains many classes used throughout the code, in particular all constructions involving orbit-basis matrices and their properties.
 
 ## Examples
 Under `examples/simulations` you can find code reproducing the examples that are included in the paper, in particular non-asymptotic 
-superactivation using a (pre- and postprocessed version of) the original Smith-Yard channel pair, 
+superactivation using (a pre- and postprocessed version of) the original Smith-Yard channel pair, 
 as well calculating the channel fidelity of the qubit amplitude damping and depolarizing channel.
 
 ## Caching Framework
