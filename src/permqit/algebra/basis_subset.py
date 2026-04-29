@@ -23,7 +23,7 @@ class BasisSubset[LabelT](Basis[LabelT]):
     that meet the given ``BasisSubset.predicate``. This obviously spans a subspace of the span of ``BasisSubset.subset_of``.
     The predicate is a function that takes a label and returns True if it should be included in the subset, and False otherwise.
 
-    In order to make use of the caching ane reusing features of the library, the predicate provided should be hashable.
+    In order to make use of the caching features of the library, the predicate provided should be hashable.
     """
 
     subset_of: Basis[LabelT]

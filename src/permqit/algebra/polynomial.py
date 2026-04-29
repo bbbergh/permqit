@@ -1,13 +1,10 @@
 """
 Sparse polynomial operations used in isomorphism calculations.
-
-Refactored: introduce a generic `Polynomial[AtomT, CoeffT]` class that encapsulates the
-sparse polynomial representation (mapping monomial -> coefficient).
 """
 from __future__ import annotations
 
 from numbers import Number
-from typing import TypeVar, Generic, Dict, Tuple, Iterable, Any, Optional, cast, Hashable, Sequence
+from typing import TypeVar, Generic, Dict, Tuple, Iterable, Any, Optional, cast, Hashable, Sequence, Self
 
 import sympy.combinatorics
 

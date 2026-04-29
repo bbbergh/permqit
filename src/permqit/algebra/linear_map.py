@@ -1,4 +1,4 @@
-"""Linear maps (isomorphisms) between bases.
+"""Linear maps that map coefficient vectors in one basis to coefficient vectors in another (or possibly the same) basis.
 
 This module contains the abstract base classes for maps that transform
 coefficient vectors from one basis to another, plus the infrastructure
@@ -12,11 +12,11 @@ MatrixCache
     Holds one matrix in multiple formats; converts on demand or lazily caches.
 LinearMap
     Abstract base; any map between two bases.
-IndexMapping  (formerly IndexMappingIsomorphism)
+IndexMapping
     Isomorphisms that just remap indices 1-to-1.
-TransitionMatrix  (formerly TransitionMatrixIsomorphism)
-    Isomorphisms backed by a (sparse) transition matrix.
-GivenTransitionMatrix  (formerly GivenTransitionMatrixIsomorphism)
+TransitionMatrix
+    Linear maps backed by a (sparse) transition matrix.
+GivenTransitionMatrix
     Concrete TransitionMatrix whose matrix is supplied at construction time.
 """
 
@@ -48,10 +48,6 @@ __all__ = [
     "GatherMappingInverse",
     "TransitionMatrix",
     "GivenTransitionMatrix",
-    # Backward-compatible old names
-    "IndexMappingIsomorphism",
-    "TransitionMatrixIsomorphism",
-    "GivenTransitionMatrixIsomorphism",
 ]
 
 # Numerical data can be in any of the supported storage formats:
@@ -896,12 +892,3 @@ class GivenTransitionMatrix(TransitionMatrix):
 
     def _calculate_transition_matrix(self):
         raise RuntimeError("This should never be called on GivenTransitionMatrix.")
-
-
-# ---------------------------------------------------------------------------
-# Backward-compatible aliases (old Isomorphism-suffixed names)
-# ---------------------------------------------------------------------------
-Isomorphism = LinearMap  # the old abstract base was called Isomorphism
-IndexMappingIsomorphism = ScatterIndexMapping
-TransitionMatrixIsomorphism = TransitionMatrix
-GivenTransitionMatrixIsomorphism = GivenTransitionMatrix

@@ -180,7 +180,7 @@ class EndSnBlockOrbitBasis(_BaseEndSnBlockOrbitBasis):
 class EndSnBlockOrbitBasisSubset(_BaseEndSnBlockOrbitBasis):
     """
     Similar to EndSnBlockOrbitBasis, but now the blocks are subsets of MatrixStandardBasis.
-    This is useful for example for LDUI, where the blocks are the subsets of the standard basis corresponding to the allowed matrix entries.
+    This is useful for example for tensor products of matrices which are sparse, where the blocks are the subsets of the standard basis corresponding to the allowed matrix entries.
     """
 
     # Implements part of the BasisSubset interface
