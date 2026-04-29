@@ -8,7 +8,8 @@ typical operations used in quantum information theory (partial traces, (partial)
 Once the API has matured we will release a published version on pypi. 
 
 ## Installation
-Clone the repository and make sure you have [`uv`](https://docs.astral.sh/uv/) installed. Then run `uv sync`, this will install all dependencies into a local venv. If you would like GPU acceleration you need a CUDA compatible GPU. If you have CUDA installed locally, you can install with the necessary `cupy` dependencies by running `uv sync --extra cuda12` or `uv sync --extra cuda13` depending on your CUDA version. If you don't already have CUDA installed you can run `uv sync --extra cuda12standalone` or `uv sync --extra cuda13standalone` to install the full CUDA toolchain into the python venv. 
+This package requires Python version >= 3.12. Clone the repository and make sure you have [`uv`](https://docs.astral.sh/uv/) installed. Then run `uv sync`, this will install all dependencies into a local venv. If you would like GPU acceleration you need a CUDA compatible GPU. If you have CUDA installed locally, you can install with the necessary `cupy` dependencies by running `uv sync --extra cuda12` or `uv sync --extra cuda13` depending on your CUDA version. If you don't already have CUDA installed you can run `uv sync --extra cuda12standalone` or `uv sync --extra cuda13standalone` to install the full CUDA toolchain into the python venv.
+Unfortunately, on MacOS Intel (x86-64) Python 3.14 is not supported due to some dependencies not being available.
 
 ## Repository Overview
 TBA
