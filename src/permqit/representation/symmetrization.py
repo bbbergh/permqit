@@ -9,28 +9,26 @@ from .combinatorics import multinomial_coeff
 from ..algebra import EndSnOrbitBasis, MatrixTensorProductBasis, MatrixStandardBasis, EndSnOrbitBasisSubset
 from .orbits import PairOrbit
 from ..algebra.basis_subset import MatrixBasisSubset, MatrixStandardBasisSubset, OrbitFitsMaskPredicate
-from ..algebra.linear_map import ScatterIndexMapping, MatrixCache, GatherIndexMapping, GivenGatherIndexMapping, \
-    LinearMap, TransitionMatrix, \
+from ..algebra.linear_map import ScatterIndexMapping, MatrixCache, TransitionMatrix, \
     GivenTransitionMatrix, GivenScatterIndexMapping
 from ..utilities import caching
 from ..utilities.numpy_utils import sum_combinations, product_combinations
 
 
 class SymmetrizationRelations(metaclass=caching.WeakRefMemoize):
-    r"""
-    Every element \rho ∈ End^{S_n}(M^n) naturally also lives in \bigotimes_{i = 1}^t End^{S_μ_i}(M^μ_i), where μ is a partition of n.
-    Conversely, every element of \bigotimes_{i = 1}^t End^{S_μ_i}(M^μ_i) can be symmetrized (i.e. averaged over the group orbit S_n) to yield again
-    an element of End^{S_n}(M^n). This class computes and stores the relation between basis elements of these two spaces. In particular, basis element of
-    \bigotimes_{i = 1}^t End^{S_μ_i}(M^μ_i), i.e. every tensor product of EndSnOrbitBasis elements, corresponds to a single element of
+    """
+    Every element ρ ∈ End^{S_n}(M^n) naturally also lives in ⊕_{i = 1}^t End^{S_μ_i}(M^μ_i), where μ is a partition of n.
+    Conversely, every element of ⊕_{i = 1}^t End^{S_μ_i}(M^μ_i) can be symmetrized (i.e. averaged over the group S_n) to yield again
+    an element of End^{S_n}(M^n). This class computes and stores the relation between basis elements of these two spaces. In particular, basis elements of
+    ⊕_{i = 1}^t End^{S_μ_i}(M^μ_i), i.e. every tensor product of EndSnOrbitBasis elements, correspond to a single element of
     EndSnOrbitBasis in End^{S_n}(M^n), (which is obtained by summing the count matrices of the individual basis elements), and obtains a prefactor
     when symmetrizing which is related to the size of the original and final orbits.
 
-    As a linear map, this class implements the \bigotimes_{i = 1}^t End^{S_μ_i}(M^μ_i) -> End^{S_n}(M^n) mapping that takes every basis vector to its
+    As a linear map, this class implements the ⊕_{i = 1}^t End^{S_μ_i}(M^μ_i) -> End^{S_n}(M^n) mapping that takes every basis vector to its
     symmetrization -- this can be accessed via SymmetrizationRelations.symmetrization --, as well as the canonical embedding
-    End^{S_n}(M^n) -> \bigotimes_{i = 1}^t End^{S_μ_i}(M^μ_i) that takes every basis vector to a linear combination of all basis vectors
-    in \bigotimes_{i = 1}^t End^{S_μ_i}(M^μ_i) that correspond to it -- this can be accessed via SymmetrizationRelations.embedding.
+    End^{S_n}(M^n) -> ⊕_{i = 1}^t End^{S_μ_i}(M^μ_i) that takes every basis vector to a linear combination of all basis vectors
+    in ⊕_{i = 1}^t End^{S_μ_i}(M^μ_i) that correspond to it -- this can be accessed via SymmetrizationRelations.embedding.
     """
-    # TODO: replace \latex with unicode
 
     symmetric_basis: EndSnOrbitBasis|EndSnOrbitBasisSubset
     split_basis: MatrixTensorProductBasis[PairOrbit]
@@ -94,4 +92,4 @@ class SymmetrizationRelations(metaclass=caching.WeakRefMemoize):
         return GivenTransitionMatrix(self.split_basis, self.symmetric_basis, mat)
 
     def __str__(self):
-        return f"{type(self).__name__}({self.split_basis!s} <-> {self.symmetric_basis!s}"
+        return f"{type(self).__name__}({self.split_basis!s} <-> {self.symmetric_basis!s})"
