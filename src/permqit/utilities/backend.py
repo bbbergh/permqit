@@ -1,9 +1,6 @@
 """
 Backend selection for power method (NumPy vs CuPy).
-
-All power_method code must use backend.xp and backend.USE_GPU so that
-_reinitialize_backend() takes effect everywhere (e.g. after setting
-permqit_USE_GPU in Colab before the first permqit import).
+If you want to disable the GPU even if you have one, set os.environ.set("PERMQIT_USE_GPU", "false") before importing the package.
 """
 
 import os
@@ -60,10 +57,10 @@ def _add_cuda_12_bins_to_path():
 
 
 def reinitialize_backend() -> None:
-    """Re-read permqit_USE_GPU and set xp/USE_GPU. Call after setting env (e.g. in Colab)."""
+    """Re-read PERMQIT_USE_GPU and set xp/USE_GPU. Call after setting env (e.g. in Colab)."""
     global USE_GPU, xp, cupyx, cp
-    env_use_gpu = os.environ.get("permqit_USE_GPU", "").lower() in ("true", "1", "yes")
-    env_disable_gpu = os.environ.get("permqit_USE_GPU", "").lower() in ("false", "0", "no")
+    env_use_gpu = os.environ.get("PERMQIT_USE_GPU", "").lower() in ("true", "1", "yes")
+    env_disable_gpu = os.environ.get("PERMQIT_USE_GPU", "").lower() in ("false", "0", "no")
     USE_GPU = False
     xp = np
     if env_disable_gpu or DISABLE_GPU:
@@ -87,14 +84,14 @@ def reinitialize_backend() -> None:
             assert cupyx, "Could not import cupyx, please check your cuda/cupy installation"
 
         if env_use_gpu:
-            print("✓ Using CuPy (GPU) backend (permqit_USE_GPU=true)")
+            print("✓ Using CuPy (GPU) backend (PERMQIT_USE_GPU=true)")
         else:
             print("✓ Using CuPy (GPU) backend (auto-detected)")
     except Exception as e:
         USE_GPU = False
         xp = np
         if env_use_gpu:
-            print(f"⚠ permqit_USE_GPU=true but GPU not available: {e}")
+            print(f"⚠ PERMQIT_USE_GPU=true but GPU not available: {e}")
             print("⚠ Falling back to NumPy (CPU) backend")
         else:
             print("⚠ Using NumPy (CPU) backend - GPU not available")
