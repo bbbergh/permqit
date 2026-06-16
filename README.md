@@ -1,5 +1,5 @@
 # A Toolbox for Permutation Invariant Optimization Problems in Quantum Information Theory
-This is the code repository for the paper: Bergh, Parentin: Permutation Invariant Optimization Problems in Quantum Information Theory: A Framework for Channel Fidelity and Beyond. arXiv:&lt;will be added once published>
+This is the code repository for the paper: Bergh, Parentin: Permutation Invariant Optimization Problems in Quantum Information Theory: A Framework for Channel Fidelity and Beyond. arXiv:2604.27040.
 
 It provides a python package with tools for efficiently computing values of high-dimensional permutation-invariant optimization problems as they appear in quantum information theory. In particular, it allows phrasing many
 typical operations used in quantum information theory (partial traces, (partial) channel applications) wholly within the permutation-invariant subspace and without ever constructing exponentially large matrices.
