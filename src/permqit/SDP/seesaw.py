@@ -24,7 +24,11 @@ def compute_tensor_product_fidelity_without_symmetry_seesaw(
     basisAB = EndSnOrbitBasis(n, d_A * d_B)
 
     # Construct the full dense tensor product channel and then feed it into symmetric seesaw with n = 1.
-    channel = basisAB.linear_combination(basisAB.coefficients_for_tensor_product(N)).todense()
+    # linear_combination may return either a sparse array or a dense ndarray depending on the coefficients.
+    channel = basisAB.linear_combination(basisAB.coefficients_for_tensor_product(N))
+    if hasattr(channel, "todense"):
+        channel = channel.todense()
+    channel = np.asarray(channel)
     return compute_tensor_product_fidelity_seesaw(1, d_R, channel, d_A**n, d_B**n, timing_analysis=timing_analysis)
 
 
