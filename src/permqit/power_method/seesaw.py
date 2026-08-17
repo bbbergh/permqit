@@ -45,7 +45,6 @@ from ..representation.isomorphism import EndSnAlgebraIsomorphism
 from ..representation.partial_traces import BasePartialTraceRelations
 from ..representation.combinatorics import multinomial_coeff, weak_compositions
 from ..utilities import backend
-from ..utilities.backend import xp
 from ..utilities.timing import MaybeExpensiveComputation
 from ..utilities.sdp_result import SDPResult
 from . import power_iteration
@@ -251,8 +250,8 @@ def compute_fidelity_seesaw(
         raise ValueError("sector_fidelity_weights length must match n_sectors.")
 
     # ---------- Hermitian symmetrization precomputation ----------
-    t_A_xp = xp.asarray(basisA_orbit.transpose_index_lookup())
-    t_R_xp = xp.asarray(np.arange(d_R**2).reshape(d_R, d_R).T.ravel())
+    t_A_xp = backend.xp.asarray(basisA_orbit.transpose_index_lookup())
+    t_R_xp = backend.xp.asarray(np.arange(d_R**2).reshape(d_R, d_R).T.ravel())
 
     # ---------- Power-method hyperparameters ----------
     power_max_iter = (
@@ -347,8 +346,8 @@ def compute_fidelity_seesaw(
                 break
 
     # ---------- Select global best ----------
-    fidelities_xp = xp.asarray(fidelities)
-    idx_best = int(xp.argmax(fidelities_xp))
+    fidelities_xp = backend.xp.asarray(fidelities)
+    idx_best = int(backend.xp.argmax(fidelities_xp))
     max_fidelity = float(fidelities_xp[idx_best])
     max_encoder = best_encoders[idx_best]
     max_decoder = best_decoders[idx_best]

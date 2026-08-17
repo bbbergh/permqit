@@ -8,7 +8,6 @@ from ..algebra import EndSnOrbitBasis, CoefficientData, EndSnOrbitBasisSubset, B
 from ..representation.isomorphism import EndSnAlgebraIsomorphism
 from ..representation.partial_traces import PartialTraceRelations, BasePartialTraceRelations
 from ..utilities import backend
-from ..utilities.backend import xp
 from ..utilities.random import random_channel_with_permutation_invariant_output, random_permutation_invariant_channel
 
 
@@ -87,9 +86,9 @@ def get_coefficient_adjoint_RS(X, d_R, basis: 'EndSnOrbitBasis'):
     """
     m_S = basis.size()
     T = X.reshape(d_R, d_R, m_S)
-    T_perm = xp.transpose(T, (2, 1, 0))
+    T_perm = backend.xp.transpose(T, (2, 1, 0))
     idx = basis.transpose_index_lookup()
-    T_perm = xp.take(T_perm, xp.asarray(idx), axis=0)
+    T_perm = backend.xp.take(T_perm, backend.xp.asarray(idx), axis=0)
     return T_perm.ravel()
 
 
@@ -109,9 +108,9 @@ def get_coefficient_adjoint_SR(X, d_R, basis: 'EndSnOrbitBasis'):
     """
     m_S = basis.size()
     T = X.reshape(m_S, d_R, d_R)
-    T_perm = xp.transpose(T, (2, 1, 0))
+    T_perm = backend.xp.transpose(T, (2, 1, 0))
     idx = basis.transpose_index_lookup()
-    T_perm = xp.take(T_perm, xp.asarray(idx), axis=-1)
+    T_perm = backend.xp.take(T_perm, backend.xp.asarray(idx), axis=-1)
     return T_perm.ravel()
 
 
@@ -144,7 +143,7 @@ def get_coefficient_adjoint_general_RS(
 
     X_arr = X
     T = X_arr.reshape(d_R, d_R, m_tot)
-    T_perm = xp.transpose(T, (2, 1, 0))  # (m_tot, d_R, d_R) — SR layout with transposed R
+    T_perm = backend.xp.transpose(T, (2, 1, 0))  # (m_tot, d_R, d_R) — SR layout with transposed R
 
     # Build combined orbit-transpose permutation over all factors.
     idx_arrays = [np.asarray(b.transpose_index_lookup()) for b in bases]
@@ -153,7 +152,7 @@ def get_coefficient_adjoint_general_RS(
         grid = np.take(grid, t_idx, axis=axis)
     t_to_tt = grid.ravel()
 
-    return T_perm[xp.asarray(t_to_tt), :, :].ravel()
+    return T_perm[backend.xp.asarray(t_to_tt), :, :].ravel()
 
 
 def get_coefficient_adjoint_general_SR(
@@ -182,7 +181,7 @@ def get_coefficient_adjoint_general_SR(
 
     X_arr = X
     T = X_arr.reshape(m_tot, d_R, d_R)
-    T_perm = xp.transpose(T, (2, 1, 0))  # (d_R, d_R, m_tot) — RS layout with transposed R
+    T_perm = backend.xp.transpose(T, (2, 1, 0))  # (d_R, d_R, m_tot) — RS layout with transposed R
 
     # Build combined orbit-transpose permutation over all factors.
     idx_arrays = [np.asarray(b.transpose_index_lookup()) for b in bases]
@@ -191,4 +190,4 @@ def get_coefficient_adjoint_general_SR(
         grid = np.take(grid, t_idx, axis=axis)
     t_to_tt = grid.ravel()
 
-    return T_perm[:, :, xp.asarray(t_to_tt)].ravel()
+    return T_perm[:, :, backend.xp.asarray(t_to_tt)].ravel()

@@ -10,7 +10,6 @@ from ..algebra.endomorphism_direct_sum_basis import EndSnBlockOrbitBasisSubset, 
 from ..algebra.endomorphism_basis import EndSnOrbitBasisSubset
 from ..algebra.linear_map import MatrixCache, CoefficientData, StorageFormat, GivenGatherIndexMapping
 from ..utilities import backend
-from ..utilities.backend import USE_GPU
 from ..utilities.numpy_utils import sum_combinations, product_combinations, take_groups, ArrayAPICompatible, multi_vector_kron
 from ..utilities.timing import ExpensiveComputation
 from .combinatorics import (

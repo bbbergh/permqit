@@ -30,12 +30,11 @@ def get_multinomial_coeff_func_xp():
     if not backend.USE_GPU:
         return multinomial_coeff_fast
 
-    from ..utilities.backend import cupyx, cp
-    assert cupyx.scipy.special
+    assert backend.cupyx.scipy.special
 
     def multinomial_coeff_gpu(ks, axis=-1):
-        cumsum = cp.cumsum(ks, axis=axis)
-        return cp.prod(cupyx.scipy.special.binom(cumsum, ks), axis=axis)
+        cumsum = backend.cp.cumsum(ks, axis=axis)
+        return backend.cp.prod(backend.cupyx.scipy.special.binom(cumsum, ks), axis=axis)
 
     return multinomial_coeff_gpu
 

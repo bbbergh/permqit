@@ -29,7 +29,7 @@ from ..representation.isomorphism import (
     tensor_product_block_diagonalization,
     tensor_product_inverse_block_diagonalization,
 )
-from ..utilities.backend import xp, USE_GPU
+from ..utilities import backend
 from ..utilities.timing import MaybeExpensiveComputation
 
 
@@ -63,6 +63,7 @@ def _normalize_blocks(
 
     Zero-sized blocks pass through unchanged.
     """
+    xp = backend.xp
     if picture == 'h':
         C_normalized = []
         for C, m, _w in zip(C_blocks, block_sizes_m, weights):
@@ -128,8 +129,8 @@ def _compute_fidelity(
     for M, C, w in zip(M_blocks, C_blocks, weights):
         if M.size == 0:
             continue
-        tr = xp.trace(M @ C)
-        tr_val = float(xp.real(tr).item()) if (USE_GPU and hasattr(tr, 'item')) else float(xp.real(tr))
+        tr = backend.xp.trace(M @ C)
+        tr_val = float(backend.xp.real(tr).item()) if (backend.USE_GPU and hasattr(tr, 'item')) else float(backend.xp.real(tr))
         fidelity += w * tr_val
     result = fidelity / d_R ** 2
     if result > 1.0 + NOISE_TOLERANCE:
@@ -202,8 +203,8 @@ def power_iteration(
 
     block_sizes_m = [s // d_R for s in block_sizes_full]
 
-    M_blocks = [hermitianize(xp.asarray(M)) for M in M_blocks]
-    C_blocks = [hermitianize(xp.asarray(C)) for C in C_blocks_init]
+    M_blocks = [hermitianize(backend.xp.asarray(M)) for M in M_blocks]
+    C_blocks = [hermitianize(backend.xp.asarray(C)) for C in C_blocks_init]
 
     prev_fidelity = _compute_fidelity(M_blocks, C_blocks, weights, d_R)
     start_time = time.time()
@@ -222,9 +223,9 @@ def power_iteration(
         C_blocks = []
         for C in C_new_blocks:
             C = hermitianize(C)
-            eigs, vecs = xp.linalg.eigh(C)
+            eigs, vecs = backend.xp.linalg.eigh(C)
             C_blocks.append(
-                (vecs * xp.maximum(xp.real(eigs), 0.0).astype(C.dtype)[None, :]) @ vecs.conj().T
+                (vecs * backend.xp.maximum(backend.xp.real(eigs), 0.0).astype(C.dtype)[None, :]) @ vecs.conj().T
             )
 
         new_fidelity = _compute_fidelity(M_blocks, C_blocks, weights, d_R)
@@ -395,21 +396,21 @@ def matrix_inverse_sqrt(A, eps=1e-12):
     Returns:
         A^{-1/2} (pseudoinverse square root, xp array)
     """
-    A = xp.asarray(A)
+    A = backend.xp.asarray(A)
     out_dtype = A.dtype
     # Use float64 for eigh/inv_sqrt to avoid precision loss and underflow
-    A_f64 = A.astype(xp.complex128) if xp.issubdtype(A.dtype, xp.complexfloating) else A.astype(xp.float64)
+    A_f64 = A.astype(backend.xp.complex128) if backend.xp.issubdtype(A.dtype, backend.xp.complexfloating) else A.astype(backend.xp.float64)
     A_f64 = hermitianize(A_f64)
 
-    eigvals, eigvecs = xp.linalg.eigh(A_f64)
+    eigvals, eigvecs = backend.xp.linalg.eigh(A_f64)
     eigvals_real = eigvals.real
     # Pseudoinverse: eigenvalues below eps are in the null space → inv_sqrt = 0
     # Clamp before sqrt to avoid divide-by-zero / invalid-value RuntimeWarnings
-    safe_eigvals = xp.maximum(eigvals_real, eps)
-    inv_sqrt_vals = xp.where(
+    safe_eigvals = backend.xp.maximum(eigvals_real, eps)
+    inv_sqrt_vals = backend.xp.where(
         eigvals_real > eps,
-        1.0 / xp.sqrt(safe_eigvals.astype(eigvecs.dtype)),
-        xp.zeros_like(eigvals_real, dtype=eigvecs.dtype),
+        1.0 / backend.xp.sqrt(safe_eigvals.astype(eigvecs.dtype)),
+        backend.xp.zeros_like(eigvals_real, dtype=eigvecs.dtype),
     )
     result = (eigvecs * inv_sqrt_vals) @ eigvecs.conj().T
     return result.astype(out_dtype)
