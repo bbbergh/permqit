@@ -14,7 +14,7 @@ from .isomorphism_kappa import calculate_f
 from .orbits import PairOrbit
 from .partition import Partition
 from ..algebra.basis import TensorProductBasis, MatrixStandardBasis, MatrixTensorProductBasis
-from ..algebra.endomorphism_direct_sum_basis import MatrixDirectSumBasis
+from ..algebra.endomorphism_direct_sum_basis import MatrixDirectSumBasis, EndSnBlockOrbitBasis, EndSnBlockOrbitBasisSubset
 from ..algebra.endomorphism_basis import EndSnBlockDiagonalBasis, EndSnOrbitBasis, EndSnIrrepBasis
 from ..algebra.linear_map import TransitionMatrix, GivenTransitionMatrix, StorageFormat, CoefficientData, Identity
 from .young_tableau import SSYT
@@ -323,8 +323,8 @@ def tensor_product_inverse_block_diagonalization[T: CoefficientData](
     reshaped = [spl.reshape(other_shape + (tuple(b.dimension for b in cast(MatrixTensorProductBasis, blockb).bases)*2)) for spl, blockb in zip(block_matrices, block_diagonal_basis.bases)]
     permuted_by_systems = [
         spl.transpose(
-            other_shape
-            + tuple(t + o for t in range(len(block_diagonalizations)) for o in range(0, 2*len(block_diagonalizations), len(block_diagonalizations)))
+            tuple(range(num_other_indices))
+            + tuple(num_other_indices + t + o for t in range(len(block_diagonalizations)) for o in range(0, 2*len(block_diagonalizations), len(block_diagonalizations)))
         ).reshape(other_shape + tuple(b.size() for b in cast(MatrixTensorProductBasis, blockb).bases))
         for spl, blockb in zip(reshaped, block_diagonal_basis.bases)]
 
@@ -339,4 +339,106 @@ def tensor_product_inverse_block_diagonalization[T: CoefficientData](
     for i, bd in enumerate(block_diagonalizations):
         orbit_basis_coefficients = bd.inverse().apply_to_coefficient_vector(orbit_basis_coefficients, axis=num_other_indices + i)
     return orbit_basis_coefficients.reshape(other_shape + (-1,))
+
+
+type OrbitBasisLike = EndSnOrbitBasis | EndSnBlockOrbitBasis | EndSnBlockOrbitBasisSubset
+"""A basis of the shape produced/consumed by ``PartialTraceRelations``/``BlockPartialTraceRelations``:
+either a plain ``EndSnOrbitBasis`` (a single system, single type), or an ``EndSnBlockOrbitBasis``/
+``...Subset`` (a system that is itself a direct sum of several distinct types, e.g. for flagged/
+multi-sector channels)."""
+
+
+def _block_orbit_chunks(basis: OrbitBasisLike) -> list[tuple[EndSnOrbitBasis, ...]]:
+    """
+    Returns the per-composition-chunk tuples of (dense) per-type ``EndSnOrbitBasis`` factors making up
+    ``basis``. A plain ``EndSnOrbitBasis`` is treated as the trivial single-chunk, single-factor case.
+    """
+    if isinstance(basis, EndSnOrbitBasis):
+        return [(basis,)]
+    if isinstance(basis, (EndSnBlockOrbitBasis, EndSnBlockOrbitBasisSubset)):
+        chunks = []
+        for chunk in basis.bases:
+            for factor in chunk.bases:
+                if not isinstance(factor, EndSnOrbitBasis):
+                    raise NotImplementedError(
+                        f"block_orbit_*_block_diagonalization only supports dense EndSnOrbitBasis "
+                        f"factors (no sparse/subset factors), got {factor!r} in {basis!s}"
+                    )
+            chunks.append(cast(tuple[EndSnOrbitBasis, ...], chunk.bases))
+        return chunks
+    raise NotImplementedError(f"Unsupported basis type for block-orbit block diagonalization: {type(basis)}")
+
+
+def _block_orbit_chunk_offsets(basis: OrbitBasisLike) -> list[tuple[int, int]]:
+    """Returns (start, size) pairs into the flat orbit-basis coefficient vector of ``basis``, one per
+    chunk, in the same order as ``_block_orbit_chunks``."""
+    if isinstance(basis, EndSnOrbitBasis):
+        return [(0, basis.size())]
+    if isinstance(basis, (EndSnBlockOrbitBasis, EndSnBlockOrbitBasisSubset)):
+        return [(int(start), int(size)) for start, size in zip(basis.basis_indices_start, basis.basis_sizes)]
+    raise NotImplementedError(f"Unsupported basis type for block-orbit block diagonalization: {type(basis)}")
+
+
+def _isos_for_chunk(chunk: tuple[EndSnOrbitBasis, ...]) -> list[EndSnAlgebraIsomorphism]:
+    return [EndSnAlgebraIsomorphism(EndSnBlockDiagonalization(f.n, f.d)) for f in chunk]
+
+
+def block_orbit_full_block_diagonalization_basis(basis: OrbitBasisLike) -> MatrixDirectSumBasis:
+    """
+    Generalizes ``tensor_product_block_diagonalization_basis`` from a single composition's chunk (a
+    tuple of ``EndSnOrbitBasis`` factors sharing one ``n``) to a full ``EndSnBlockOrbitBasis``/
+    ``...Subset`` (i.e. all compositions), or a plain ``EndSnOrbitBasis`` (the trivial single-chunk,
+    single-factor case). Returns the direct sum, over every (composition, tuple-of-partitions), of the
+    corresponding ``MatrixTensorProductBasis`` of ``EndSnIrrepBasis`` -- i.e. the basis reached by
+    fully block-diagonalizing ``basis`` into irreps.
+    """
+    sub_bases = []
+    for chunk in _block_orbit_chunks(basis):
+        sub_bases.extend(tensor_product_block_diagonalization_basis(_isos_for_chunk(chunk)).bases)
+    return MatrixDirectSumBasis(tuple(sub_bases))
+
+
+def block_orbit_block_diagonalization[T: CoefficientData](
+    orbit_basis_coefficients: T,
+    basis: OrbitBasisLike,
+) -> list[T]:
+    """
+    Generalizes ``tensor_product_block_diagonalization`` from a single composition's chunk to a full
+    ``EndSnBlockOrbitBasis``/``...Subset`` (or a plain ``EndSnOrbitBasis``, the trivial single-chunk
+    case). ``orbit_basis_coefficients``'s last axis must hold coefficients in ``basis``; any leading
+    axes are batch dimensions, exactly like ``tensor_product_block_diagonalization``.
+    Returns a flat list of blocks, one per label of ``block_orbit_full_block_diagonalization_basis(basis)``,
+    in the same order.
+    """
+    assert orbit_basis_coefficients.shape[-1] == basis.size(), (
+        f"Last axis of orbit_basis_coefficients must match basis.size()={basis.size()}, "
+        f"got shape {orbit_basis_coefficients.shape}"
+    )
+    result: list[T] = []
+    for chunk, (start, size) in zip(_block_orbit_chunks(basis), _block_orbit_chunk_offsets(basis)):
+        slice_ = orbit_basis_coefficients[..., start : start + size]
+        result.extend(tensor_product_block_diagonalization(slice_, _isos_for_chunk(chunk)))
+    return result
+
+
+def block_orbit_inverse_block_diagonalization[T: CoefficientData](
+    block_matrices: list[T],
+    basis: OrbitBasisLike,
+) -> T:
+    """The inverse of ``block_orbit_block_diagonalization``: takes a list of blocks (as returned by
+    it, in the same order) and returns the coefficients in ``basis``."""
+    other_shape = block_matrices[0].shape[:-2]
+    xp = array_namespace(block_matrices[0])
+    joined = xp.empty(other_shape + (basis.size(),), dtype=xp.complex128)
+
+    idx = 0
+    for chunk, (start, size) in zip(_block_orbit_chunks(basis), _block_orbit_chunk_offsets(basis)):
+        isos = _isos_for_chunk(chunk)
+        n_blocks = tensor_product_block_diagonalization_basis(isos).number_of_blocks
+        joined[..., start : start + size] = tensor_product_inverse_block_diagonalization(
+            block_matrices[idx : idx + n_blocks], isos
+        )
+        idx += n_blocks
+    assert idx == len(block_matrices), f"block_matrices has {len(block_matrices)} entries, expected {idx}"
+    return joined
 

@@ -20,6 +20,15 @@ from .combinatorics import (
 
 from ..algebra import EndSnOrbitBasis, EndSnBlockOrbitBasis, MatrixStandardBasis, Basis
 from ..utilities.caching import WeakRefMemoize
+from .isomorphism import (
+    block_orbit_full_block_diagonalization_basis,
+    block_orbit_block_diagonalization,
+    block_orbit_inverse_block_diagonalization,
+    OrbitBasisLike,
+)
+from .partition import Partition
+from ..algebra.basis import MatrixTensorProductBasis
+from ..algebra.endomorphism_basis import EndSnIrrepBasis
 
 
 class BasePartialTraceRelations(metaclass=WeakRefMemoize):
@@ -337,6 +346,14 @@ class SingleBlockPartialTraceRelations(BasePartialTraceRelations):
     End^{S_n}(⊕_i^t(ℂ^{p_i x p_i})^n) -- associated to an element in ⊗_{i = 1}^t End^{S_(μ_{AB}_i)}((ℂ^{p_i x p_i})^{μ_i}) for the given μ --
     and C_A is the unique element of End^{S_n}(⊕_i^t(ℂ^{p_i x p_i})^n for which this is non-zero, which happens to be an element associated to
     ⊗_{a = 1}^t End^{S_(μ_{A}_a)}((ℂ^{d_a x d_a})^{μ_A_a}).
+
+    TODO: when both basisA and basisB are genuinely composite (t_A>1 and t_B>1) at the same time and
+    n>=2, ``_split_marginal_tensor_product`` -- called independently for the A-marginal and the
+    B-marginal -- can pair up the wrong per-type splits for a joint composition that spreads across
+    off-diagonal (type_A, type_B) pairs, so construction fails an assertion downstream in
+    ``PartialTraceRelations.__init__``. Every current caller only uses a composite basis on one side
+    (cf. ``power_method/seesaw.py``), so this has gone unnoticed; needs a fix before
+    ``BlockPartialTraceRelations`` can be relied on with composite bases on both sides.
     """
 
     basisA: SingleBlockOrbitOrSubset
@@ -730,4 +747,96 @@ def left_compose_permutation_invariant_with_covariant_channel(
     return perm_cov_channel_partial_trace_relations.apply_traceB_to_coefficient_vectors(
         other_channel.reshape(other_channel_input_basis.size(), perm_cov_channel_partial_trace_relations.basisB.size()).transpose(1, 0), perm_cov_channel
     ).transpose(1, 0).reshape(-1) # ravel() not available in GCXS which is included in ArrayAPICompatible
+
+
+def block_decompose_choi_matrix(
+    relations: BasePartialTraceRelations,
+    choi_coeffs: ArrayAPICompatible,
+) -> dict[tuple[tuple[Partition, ...], tuple[Partition, ...]], ArrayAPICompatible]:
+    """
+    Takes the Choi matrix of a permutation-covariant channel Λ, given as ``choi_coeffs`` in
+    ``relations.basisAB`` (i.e. Λ's Choi matrix, viewed as an operator on the joint A^n⊗B^n system
+    regrouped into (A⊗B)^n, is invariant under the diagonal S_n action), and decomposes the induced
+    map Λ|: End^{S_n}(A^n) -> End^{S_n}(B^n) into its components between the irrep blocks of A and B.
+
+    ``relations.basisA``/``basisB`` may each be a plain ``EndSnOrbitBasis`` (blocks indexed by a single
+    partition) or an ``EndSnBlockOrbitBasis``/``...Subset`` (a system that is itself a direct sum of
+    several types, blocks indexed by a tuple of partitions, one per type) -- see
+    ``isomorphism.block_orbit_full_block_diagonalization_basis``.
+
+    Because Λ is only assumed S_n-covariant (not otherwise GL-equivariant), Λ| generally mixes
+    different blocks of A into different blocks of B: the returned dict has one entry per pair of
+    (A-block label, B-block label), including off-diagonal (label_A != label_B) pairs. Each value is
+    the Choi matrix (standard convention: row/col = (input, output)) of that *component* of Λ| -- it
+    is generally neither CP nor trace-preserving on its own (e.g. it can fail
+    ``utilities.testing.assert_is_valid_choi``); only the full assembly of all blocks (weighted by the
+    multiplicities of each block, cf. ``power_method.power_iteration._normalize_blocks``) is a genuine
+    channel. Zero-dimensional blocks (partitions with too many rows for the corresponding type's
+    dimension) are omitted.
+
+    Known limitation (in ``relations`` construction, not here): if ``relations`` is a
+    ``BlockPartialTraceRelations`` where *both* basisA and basisB are composite (t>1) at the same
+    time, and n>=2, constructing ``relations`` itself currently fails/misbehaves --
+    ``SingleBlockPartialTraceRelations`` mismatches the per-type splits when a joint composition
+    spreads across off-diagonal (type_A, type_B) pairs. This is a pre-existing gap unrelated to this
+    function (every existing caller only ever uses a composite basis on one side, cf.
+    ``power_method/seesaw.py``'s "input side always carries full S_n symmetry"); tracked as a TODO to
+    fix separately rather than here.
+
+    :param relations: Partial-trace relations specifying basisA (input), basisB (output) and basisAB (joint).
+    :param choi_coeffs: Coefficients of Λ's Choi matrix in ``relations.basisAB``.
+    :return: ``{(label_A, label_B): choi_block}``, where ``label_A``/``label_B`` are tuples of
+        partitions (one per type of A/B; a 1-tuple for a plain ``EndSnOrbitBasis``), and ``choi_block``
+        has shape ``(m_A*m_B, m_A*m_B)`` with ``m_A``/``m_B`` the corresponding block dimensions.
+    """
+    relations.ensure_calculated()
+    xp = array_namespace(choi_coeffs)
+    dtype = getattr(choi_coeffs, "dtype", xp.complex128)
+
+    basisA = cast(OrbitBasisLike, relations.basisA)
+    basisB = cast(OrbitBasisLike, relations.basisB)
+    block_basis_A = block_orbit_full_block_diagonalization_basis(basisA)
+    block_basis_B = block_orbit_full_block_diagonalization_basis(basisB)
+
+    # Sparse-ish "block basis A -> orbit basis A" transition, batched over all of block_basis_A's
+    # coefficients at once (rather than materializing an orbit_size_A x orbit_size_A identity), so
+    # this stays cheap even when the orbit basis is much larger than the block basis.
+    full_eye = xp.eye(block_basis_A.size(), dtype=dtype)
+    unit_blocks = []
+    for i in range(block_basis_A.number_of_blocks):
+        start = int(block_basis_A.basis_indices_start[i])
+        size = block_basis_A.basis_sizes[i]
+        m_A = block_basis_A.block_sizes[i]
+        unit_blocks.append(full_eye[:, start : start + size].reshape((block_basis_A.size(), m_A, m_A)))
+    block_to_orbit_A = block_orbit_inverse_block_diagonalization(unit_blocks, basisA)
+    # block_to_orbit_A: (block_basis_A.size(), orbit_size_A)
+
+    coefficientsA = xp.swapaxes(block_to_orbit_A, 0, 1)  # (orbit_size_A, block_basis_A.size())
+    map_matrix = relations.apply_traceA_to_coefficient_vectors(coefficientsA, choi_coeffs)
+    # map_matrix: (orbit_size_B, block_basis_A.size())
+
+    blocks_B = block_orbit_block_diagonalization(xp.moveaxis(map_matrix, 0, -1), basisB)
+    # blocks_B[bi]: (block_basis_A.size(), m_B, m_B)
+
+    result: dict[tuple[tuple[Partition, ...], tuple[Partition, ...]], ArrayAPICompatible] = {}
+    for block_B, sub_B in zip(blocks_B, block_basis_B.bases):
+        sub_B = cast(MatrixTensorProductBasis, sub_B)
+        m_B = sub_B.dimension
+        if m_B == 0:
+            continue
+        label_B = tuple(cast(EndSnIrrepBasis, irrep).partition for irrep in sub_B.bases)
+        for i in range(block_basis_A.number_of_blocks):
+            m_A = block_basis_A.block_sizes[i]
+            if m_A == 0:
+                continue
+            start = int(block_basis_A.basis_indices_start[i])
+            size = block_basis_A.basis_sizes[i]
+            sub_A = cast(MatrixTensorProductBasis, block_basis_A.bases[i])
+            label_A = tuple(cast(EndSnIrrepBasis, irrep).partition for irrep in sub_A.bases)
+
+            sub_block = block_B[start : start + size].reshape(m_A, m_A, m_B, m_B)
+            choi_block = xp.transpose(sub_block, (0, 2, 1, 3)).reshape(m_A * m_B, m_A * m_B)
+            result[(label_A, label_B)] = choi_block
+
+    return result
 
