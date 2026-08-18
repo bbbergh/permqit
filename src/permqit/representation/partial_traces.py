@@ -785,15 +785,6 @@ def block_decompose_choi_matrix(
     the Choi matrix (standard convention: row/col = (input, output)) of that *component* of Λ|.
     Zero-dimensional blocks (partitions with too many rows for the corresponding type's dimension) are omitted.
 
-    Known limitation (in ``relations`` construction, not here): if ``relations`` is a
-    ``BlockPartialTraceRelations`` where *both* basisA and basisB are composite (t>1) at the same
-    time, and n>=2, constructing ``relations`` itself currently fails/misbehaves --
-    ``SingleBlockPartialTraceRelations`` mismatches the per-type splits when a joint composition
-    spreads across off-diagonal (type_A, type_B) pairs. This is a pre-existing gap unrelated to this
-    function (every existing caller only ever uses a composite basis on one side, cf.
-    ``power_method/seesaw.py``'s "input side always carries full S_n symmetry"); tracked as a TODO to
-    fix separately rather than here.
-
     :param relations: Partial-trace relations specifying basisA (input), basisB (output) and basisAB (joint).
     :param choi_coeffs: Coefficients of Λ's Choi matrix in ``relations.basisAB``.
     :return: ``{(label_A, label_B): choi_block}``, where ``label_A``/``label_B`` are tuples of

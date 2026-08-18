@@ -5,11 +5,12 @@ from typing import overload, Iterable, Sequence, Generator, Any
 import numpy as np
 
 
-# TODO: scipy.sparse is not really array API compatible. Investigate where we really need that and then replace with a different type for this
 if typing.TYPE_CHECKING:
     import sparse
+    # TODO: scipy.sparse is not really array API compatible, which is why it is not included in the unions below.
+    #  Investigate if there is a better way to handle this.
     import scipy.sparse
-    """ # This does not seem to work as intended currently
+    """ # This does not seem to work as intended currently (TODO)
     try:
         import cupy as cp
         import cupyx
