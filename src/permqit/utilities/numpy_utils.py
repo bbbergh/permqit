@@ -9,6 +9,7 @@ import numpy as np
 if typing.TYPE_CHECKING:
     import sparse
     import scipy.sparse
+    """ # This does not seem to work as intended currently
     try:
         import cupy as cp
         import cupyx
@@ -18,6 +19,10 @@ if typing.TYPE_CHECKING:
     else:
         type ArrayAPICompatible = np.ndarray | sparse.GCXS  | cp.ndarray | cupyx.scipy.sparse.csr_matrix
         type DenseArray = np.ndarray | cp.ndarray
+    """
+    type ArrayAPICompatible = np.ndarray | sparse.GCXS
+    type DenseArray = np.ndarray
+
 else:
     type ArrayAPICompatible = typing.Any
     type DenseArray = typing.Any
