@@ -71,11 +71,11 @@ class SymmetrizationRelations(metaclass=caching.WeakRefMemoize):
         # This is actually very annoying to calculate in one go via numpy broadcasting because we don't have a good numpy ufunc for (integer) multinomial coefficients. It can be done with scipy.comb, but this is fp and also somewhat slow.
         # Instead, we use that the multiplicity can also be computed from the quotient of the orbit sizes of the individual and total orbits.
 
-        return MatrixCache.as_cache(
+        return MatrixCache.as_cache(np.round(
             (multinomial_coeff(self.partition) *
             product_combinations(
                 [cast(EndSnOrbitBasis|EndSnOrbitBasisSubset, b).norm_coefficients for b in self.split_basis.bases]
-            ).ravel()) / self.symmetric_basis.norm_coefficients[self.index_mapping.index_mapping().as_numpy()]
+            ).ravel()) / self.symmetric_basis.norm_coefficients[self.index_mapping.index_mapping().as_numpy()])
         )
 
     @cached_property
