@@ -1,9 +1,3 @@
-"""
-Context/dataclass definitions consolidating parameters and precomputed representation-theoretic data.
-Extracted from sections: Constants, Parameters of the simulation, Representation Theoretic Parameters,
-Isomorphism Parameters. Functions that previously relied on global variables now accept these
-context objects explicitly, improving purity and testability.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass
