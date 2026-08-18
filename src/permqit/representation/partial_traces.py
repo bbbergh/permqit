@@ -10,10 +10,9 @@ from ..algebra.endomorphism_direct_sum_basis import EndSnBlockOrbitBasisSubset, 
 from ..algebra.endomorphism_basis import EndSnOrbitBasisSubset
 from ..algebra.linear_map import MatrixCache, CoefficientData, StorageFormat, GivenGatherIndexMapping
 from ..utilities import backend
-from ..utilities.numpy_utils import sum_combinations, product_combinations, take_groups, ArrayAPICompatible, multi_vector_kron
+from ..utilities.numpy_utils import sum_combinations, take_groups, ArrayAPICompatible, multi_vector_kron
 from ..utilities.timing import ExpensiveComputation
 from .combinatorics import (
-    multinomial_coeff,
     get_multinomial_coeff_func_xp,
 )
 
@@ -748,11 +747,12 @@ def left_compose_permutation_invariant_with_covariant_channel(
         other_channel.reshape(other_channel_input_basis.size(), perm_cov_channel_partial_trace_relations.basisB.size()).transpose(1, 0), perm_cov_channel
     ).transpose(1, 0).reshape(-1) # ravel() not available in GCXS which is included in ArrayAPICompatible
 
+type DecomposedChoiBlocks = dict[tuple[tuple[Partition, ...], tuple[Partition, ...]], ArrayAPICompatible]
 
 def block_decompose_choi_matrix(
     relations: BasePartialTraceRelations,
     choi_coeffs: ArrayAPICompatible,
-) -> dict[tuple[tuple[Partition, ...], tuple[Partition, ...]], ArrayAPICompatible]:
+) -> DecomposedChoiBlocks:
     """
     Takes the Choi matrix of a permutation-covariant channel Λ, given as ``choi_coeffs`` in
     ``relations.basisAB`` (i.e. Λ's Choi matrix, viewed as an operator on the joint A^n⊗B^n system
@@ -764,15 +764,10 @@ def block_decompose_choi_matrix(
     several types, blocks indexed by a tuple of partitions, one per type) -- see
     ``isomorphism.block_orbit_full_block_diagonalization_basis``.
 
-    Because Λ is only assumed S_n-covariant (not otherwise GL-equivariant), Λ| generally mixes
-    different blocks of A into different blocks of B: the returned dict has one entry per pair of
+    Λ| generally mixes different blocks of A into different blocks of B: the returned dict has one entry per pair of
     (A-block label, B-block label), including off-diagonal (label_A != label_B) pairs. Each value is
-    the Choi matrix (standard convention: row/col = (input, output)) of that *component* of Λ| -- it
-    is generally neither CP nor trace-preserving on its own (e.g. it can fail
-    ``utilities.testing.assert_is_valid_choi``); only the full assembly of all blocks (weighted by the
-    multiplicities of each block, cf. ``power_method.power_iteration._normalize_blocks``) is a genuine
-    channel. Zero-dimensional blocks (partitions with too many rows for the corresponding type's
-    dimension) are omitted.
+    the Choi matrix (standard convention: row/col = (input, output)) of that *component* of Λ|.
+    Zero-dimensional blocks (partitions with too many rows for the corresponding type's dimension) are omitted.
 
     Known limitation (in ``relations`` construction, not here): if ``relations`` is a
     ``BlockPartialTraceRelations`` where *both* basisA and basisB are composite (t>1) at the same

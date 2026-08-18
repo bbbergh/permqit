@@ -25,6 +25,9 @@ __all__ = [
     "amplitude_damping_choi",
 ]
 
+from examples.channels._choi_decomposition import decompose_choi_tensor_product, print_decomposition_stats
+
+
 def amplitude_damping_choi(gamma: float) -> np.ndarray:
     """Return the unnormalized Choi matrix of the amplitude damping channel.
 
@@ -45,3 +48,22 @@ def amplitude_damping_choi(gamma: float) -> np.ndarray:
     J[2, 2] = gamma
     J[3, 3] = 1.0 - gamma
     return J
+
+
+def block_decompose_amplitude_damping_tensor_power(n: int, gamma: float):
+    """Decompose the normalized Choi matrix of N_gamma^{⊗n} (n tensor copies of the amplitude damping channel) into its
+    components between the irrep blocks of End^(S_n)(C^2), using block_decompose_choi_matrix.
+
+    Args:
+        n: Number of tensor copies.
+        gamma: Damping parameter γ ∈ [0, 1].
+    """
+    return decompose_choi_tensor_product(amplitude_damping_choi(gamma)/2, d_in=2, d_out=2, n=n)
+
+
+
+if __name__ == "__main__":
+    d = 2
+    print_decomposition_stats(
+        block_decompose_amplitude_damping_tensor_power(n=8, gamma=0.4), d_in=d, d_out=d
+    )

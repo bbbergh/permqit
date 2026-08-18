@@ -235,6 +235,13 @@ def binary_entropy(x):
     return -x * np.log2(x) - (1 - x) * np.log2(1 - x)
 
 
+def is_psd(matrix: np.ndarray, atol: float = 1e-8) -> bool:
+    """Whether `matrix` is (numerically) Hermitian and positive semidefinite."""
+    if not np.allclose(matrix, matrix.conj().T, atol=atol):
+        return False
+    return bool(np.all(np.linalg.eigvalsh(matrix) > -atol))
+
+
 def partial_trace(rho: np.ndarray, dims: Sequence[int]|np.ndarray, subsystem_to_trace: int):
     """Partial trace over one subsystem of a bipartite matrix rho with dims (dA, dB).
 
