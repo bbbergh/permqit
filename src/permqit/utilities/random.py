@@ -1,5 +1,6 @@
 import math
 from typing import Collection, cast
+from warnings import warn
 
 import numpy as np
 from numpy.linalg import inv
@@ -11,17 +12,18 @@ from ..utilities.numpy_utils import ArrayAPICompatible
 from .general_functions import choi_representation, partial_trace
 
 
-def random_density_matrix(d: int) -> np.ndarray:
+def random_density_matrix(d: int, *, seed: int|np.random.Generator|None=None) -> np.ndarray:
     """
     Generate a random density matrix of dimension d.
     Uses the Ginibre ensemble: rho = X @ X^dagger / Tr(X @ X^dagger).
     """
-    X = (np.random.randn(d, d) + 1j * np.random.randn(d, d)) / np.sqrt(2)
+    rng = seed if isinstance(seed, np.random.Generator) else np.random.default_rng(seed)
+    X = (rng.standard_normal((d, d)) + 1j * rng.standard_normal((d, d))) / np.sqrt(2)
     rho = X @ X.conj().T
     return rho / np.trace(rho)
 
 
-def random_state_vector(dims) -> np.ndarray:
+def random_state_vector(dims, *, seed: int|np.random.Generator|None=None) -> np.ndarray:
     """
     Generate a random pure state vector.
     dims can be an int or tuple of ints.
@@ -30,12 +32,14 @@ def random_state_vector(dims) -> np.ndarray:
         d = dims
     else:
         d = np.prod(dims)
-    psi = (np.random.randn(d) + 1j * np.random.randn(d)) / np.sqrt(2)
+    rng = seed if isinstance(seed, np.random.Generator) else np.random.default_rng(seed)
+
+    psi = (rng.standard_normal(d) + 1j * rng.standard_normal(d)) / np.sqrt(2)
     psi = psi / np.linalg.norm(psi)
     return np.outer(psi, psi.conj())
 
 
-def random_channel(d_in, d_out, TP: bool = True, U: bool = False):
+def random_channel(d_in, d_out, TP: bool = True, U: bool = False, *, seed: int|np.random.Generator|None=None) -> np.ndarray:
     """Return the Choi matrix of a random channel d_in -> d_out.
 
     Args:
@@ -44,6 +48,7 @@ def random_channel(d_in, d_out, TP: bool = True, U: bool = False):
         symmetry: Symmetry constraint passed to random_state ('none', etc.).
         TP: If True, normalize to be trace-preserving (Tr_out = I_in).
         U: If True, also normalize to be unital (Tr_in = I_out).
+        seed: Source of randomness for numpy.
 
     Returns:
         Unnormalized Choi matrix of shape (d_in*d_out, d_in*d_out), dtype complex128.
@@ -54,7 +59,7 @@ def random_channel(d_in, d_out, TP: bool = True, U: bool = False):
         # also https://arxiv.org/pdf/0709.0824 for a quantum version
 
     # This code is incorrect if TP and U are set at the same time (the second constraint destroys the first one)
-    C_AB = random_density_matrix(d_in*d_out)
+    C_AB = random_density_matrix(d_in*d_out, seed=seed)
     if TP:
         C_A = partial_trace(C_AB, (d_in, d_out), 1)
         C_A_inv_sq = np.kron(inv(sqrtm(C_A)), np.eye(d_out))
@@ -66,35 +71,21 @@ def random_channel(d_in, d_out, TP: bool = True, U: bool = False):
     return C_AB
 
 
-def random_isometry(d_in, d_out, TP: bool = True, U: bool = False):
+def random_isometry(d_in, d_out, TP: bool = True, U: bool = False, *, seed: int|np.random.Generator|None=None):
     if d_out == 0:
         return np.asarray([])
     if d_out == 1:
         return np.eye(d_in)
-    # assert TP, "Isometries are always trace preserving" # This currently breaks some code
-    if U:
-        # TODO: This is not correct. Isometries make sense also in non-product dimensions, but even if this is more complicated,
-        #  this should raise instead of just not returning an isometry.
-        # Homomorphic decoder seed: D†(x) = u(x ⊗ I_E)u* with d_E = d_out // d_in.
-        # Requires d_in | d_out; fall back to general unital channel otherwise.
-        if d_out % d_in != 0:
-            return random_channel(d_in, d_out, TP=False, U=True)
-        d_E = d_out // d_in
-        X = (np.random.randn(d_out, d_out) + 1j * np.random.randn(d_out, d_out)) / np.sqrt(2)
-        u, _ = np.linalg.qr(X)
-        # Choi block (r,r'): U_r @ U_{r'}† where U_r = u[:, r*d_E:(r+1)*d_E]
-        choi = np.zeros((d_in * d_out, d_in * d_out), dtype=np.complex128)
-        for r in range(d_in):
-            U_r = u[:, r * d_E:(r + 1) * d_E]
-            for rp in range(d_in):
-                U_rp = u[:, rp * d_E:(rp + 1) * d_E]
-                choi[r * d_out:(r + 1) * d_out, rp * d_out:(rp + 1) * d_out] = U_r @ U_rp.conj().T
-        return choi
-    else:
-        X = (np.random.randn(d_out, d_in) + 1j * np.random.randn(d_out, d_in)) / np.sqrt(2)
-        Q, _ = np.linalg.qr(X)
-        V = Q[:, :d_in]
-        return choi_representation([V], d_in).astype(np.complex128)
+    assert d_out >= d_in, f"Output dimension {d_out} must be greater than or equal to input dimension {d_in}"
+    if not TP:
+        warn("Isometries are always trace preserving, but TP=False was requested. This is not supported, but we will ignore the TP=False request and return a trace-preserving isometry anyway.")
+    assert U is False or d_in == d_out, "Isometries with d_in != d_out are never unital, so U=True is not supported"
+
+    rng = seed if isinstance(seed, np.random.Generator) else np.random.default_rng(seed)
+    X = (rng.standard_normal((d_out, d_in)) + 1j * rng.standard_normal((d_out, d_in))) / np.sqrt(2)
+    Q, _ = np.linalg.qr(X)
+    V = Q[:, :d_in]
+    return choi_representation([V], d_in).astype(np.complex128)
 
 
 def random_permutation_invariant_channel(
@@ -142,16 +133,6 @@ def random_permutation_invariant_channel(
 
     input_system_indices = list(i % len(bases) for i in input_system_indices) # Need this to have stable iteration order
     output_system_indices = [i for i in range(len(bases)) if i not in input_system_indices]
-
-    # TODO: random_channel/random_isometry used below should take a np.random.rng instead of needing this
-    if seed is not None:
-        if isinstance(seed, np.random.Generator):
-            np.random.seed(
-                seed.integers(low=0, high=np.iinfo(np.int_).max, size=(1,), dtype=np.int_)
-            )
-        else:
-            np.random.seed(seed)
-
 
     isos = [
         EndSnAlgebraIsomorphism(EndSnBlockDiagonalization(b.n, b.d)) for b in bases
@@ -219,9 +200,9 @@ def random_permutation_invariant_channel(
 
         # These create choi matrices of shape (input_dimension, output_dimension, input_dimension, output_dimension)
         if isometry:
-            local_channel = random_isometry(input_dimension, output_dimension, TP=TP, U=U)
+            local_channel = random_isometry(input_dimension, output_dimension, TP=TP, U=U, seed=rng)
         else:
-            local_channel = random_channel(input_dimension, output_dimension, TP=TP, U=U)
+            local_channel = random_channel(input_dimension, output_dimension, TP=TP, U=U, seed=rng)
 
         # These are integer partitions corresponding to irreps of S_n associated with the blocks
         input_partitions = tuple(cast(EndSnIrrepBasis, tp).partition for idx, tp in enumerate(block.bases) if idx in input_system_indices)
@@ -240,7 +221,7 @@ def random_permutation_invariant_channel(
 
 
 def random_channel_with_permutation_invariant_output(
-    d_R, iso_A: EndSnAlgebraIsomorphism, *, isometry=False, seed=None, TP: bool = True, U: bool = False, xp=np
+    d_R, iso_A: EndSnAlgebraIsomorphism, *, isometry=False, seed: int|np.random.Generator|None=None, TP: bool = True, U: bool = False, xp=np
 ):
     """Returns the Choi matrix of a random permutation-invariant channel R -> A^n.
     This is constructed by taking mixtures of random channels onto the different blocks of the block-diagonalization of End^{Sn}(A^n)

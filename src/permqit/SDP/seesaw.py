@@ -58,10 +58,12 @@ def compute_tensor_product_fidelity_seesaw(
 
     total_time = 0.0
 
+    rng = np.random.default_rng(DEFAULT_SEED)
+
     c_N = basisAB.coefficients_for_tensor_product(N)
     fidelities = []
     for rep in range(repetitions):
-        c_E = random_channel_with_permutation_invariant_output(d_R, isoA, seed=DEFAULT_SEED)
+        c_E = random_channel_with_permutation_invariant_output(d_R, isoA, seed=rng)
 
         # Symmetric encoders disabled for now. I don't actually think it's a good idea, since this is really not very random, and almost always encodes in a maximally mixed state for large n.
         #  if DEFAULT_SYMMETRY is None else random_perm_inv_encoder_symmetric(ctx, symmetry=DEFAULT_SYMMETRY, seed=DEFAULT_SEED)

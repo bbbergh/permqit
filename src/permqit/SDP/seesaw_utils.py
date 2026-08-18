@@ -11,7 +11,7 @@ from ..utilities import backend
 from ..utilities.random import random_channel_with_permutation_invariant_output, random_permutation_invariant_channel
 
 
-def random_perm_inv_encoder(iso_A: EndSnAlgebraIsomorphism, d_R: int, isometry=False, seed=None):
+def random_perm_inv_encoder(iso_A: EndSnAlgebraIsomorphism, d_R: int, isometry=False, seed: int|np.random.Generator|None=None):
     """
     Returns the Choi matrix coefficients of a random permutation-invariant encoder.
 
@@ -30,7 +30,7 @@ def random_perm_inv_encoder(iso_A: EndSnAlgebraIsomorphism, d_R: int, isometry=F
     return random_channel_with_permutation_invariant_output(d_R, iso_A, isometry=isometry, seed=seed, TP = True, U = False, xp=backend.xp)
 
 
-def random_perm_inv_decoder(isos: list[EndSnAlgebraIsomorphism], d_R: int, isometry: bool = False, seed=None):
+def random_perm_inv_decoder(isos: list[EndSnAlgebraIsomorphism], d_R: int, isometry: bool = False, seed: int|np.random.Generator|None=None):
     """Return Choi coefficients of a random decoder for S_{k_0} × … × S_{k_{m-1}}.
 
     Generalises ``gpu_random_perm_inv_decoder`` (1 iso) and
