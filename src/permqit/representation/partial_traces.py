@@ -10,7 +10,7 @@ from ..algebra.endomorphism_direct_sum_basis import EndSnBlockOrbitBasisSubset, 
 from ..algebra.endomorphism_basis import EndSnOrbitBasisSubset
 from ..algebra.linear_map import MatrixCache, CoefficientData, StorageFormat, GivenGatherIndexMapping
 from ..utilities import backend
-from ..utilities.numpy_utils import sum_combinations, take_groups, ArrayAPICompatible, multi_vector_kron
+from ..utilities.numpy_utils import ArrayAPICompatible
 from ..utilities.timing import ExpensiveComputation
 from .combinatorics import (
     get_multinomial_coeff_func_xp,
@@ -238,16 +238,6 @@ class PartialTraceRelations(BasePartialTraceRelations):
     for which Tr_A^n[(C_A ⊗ I_B)^T_A D_AB] = c C_B, and this is the only non-zero combination.
     We calculate this combination, store it in sparse matrices, as well as the numerical prefactor c.
     In the same go we also calculate the same for Tr_B^n[(I_A ⊗ C_B)^T_A D_AB]
-
-    Performance
-    -----------
-    Construction is done in three phases to keep cost low for large n (e.g. n=8, joint size ~320k):
-    1. Collect count matrices by iterating weak_compositions(n, d_AB²) and reshaping — no PairOrbit
-       allocation, same canonical order as the joint basis.
-    2. Batched reshape/transpose/sum on GPU (if permqit_USE_GPU) or CPU; single upload and a few
-       downloads when using GPU.
-    3. Indexing via count_matrix_to_index (no PairOrbit per row), reverse embeddings built as COO
-       from (embedding, arange(N)), and trace coefficients from vectorized multinomial_coeff_fast.
     """
 
     basisA: OrbitOrSubset
@@ -346,13 +336,8 @@ class SingleBlockPartialTraceRelations(BasePartialTraceRelations):
     and C_A is the unique element of End^{S_n}(⊕_i^t(ℂ^{p_i x p_i})^n for which this is non-zero, which happens to be an element associated to
     ⊗_{a = 1}^t End^{S_(μ_{A}_a)}((ℂ^{d_a x d_a})^{μ_A_a}).
 
-    TODO: when both basisA and basisB are genuinely composite (t_A>1 and t_B>1) at the same time and
-    n>=2, ``_split_marginal_tensor_product`` -- called independently for the A-marginal and the
-    B-marginal -- can pair up the wrong per-type splits for a joint composition that spreads across
-    off-diagonal (type_A, type_B) pairs, so construction fails an assertion downstream in
-    ``PartialTraceRelations.__init__``. Every current caller only uses a composite basis on one side
-    (cf. ``power_method/seesaw.py``), so this has gone unnoticed; needs a fix before
-    ``BlockPartialTraceRelations`` can be relied on with composite bases on both sides.
+    The joint block indices i are assumed to enumerate the pairs (a, b) in lexicographic order, i.e. i = a*t_B + b
+    -- this is how ``BlockPartialTraceRelations`` builds its AB basis.
     """
 
     basisA: SingleBlockOrbitOrSubset
@@ -370,161 +355,180 @@ class SingleBlockPartialTraceRelations(BasePartialTraceRelations):
         the AB basis has muptiplicities [(0,0): 1, (0,1): 1], which will then mean that the A basis has multiplicities [(0): 2], and the B basis has
         [(0): 1, (1): 1].
         """
-        # TODO: add an assertion that at every 'multiplicity point' the block dimensions add up
         self.basisA, self.basisB, self.basisAB = basisA, basisB, basisAB
 
     def __str__(self):
         return f"{type(self).__name__}(A: {self.basisA!s}, B: {self.basisB!s}, AB: {self.basisAB!s})"
 
+    def _marginal_block_indices_from_joint(self) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Verifies that the joint basis is indeed a tensor product of the two marginal bases, and returns the mapping from joint blocks to corresponding marginal blocks.
+        This includes verifying that the joint block dimensions factorize as
+        p_i = d_a * e_b and that the marginals of μ_{AB} are μ_A and μ_B.
+
+        :return: two arrays of length t_AB, giving a resp. b for every joint block index i.
+        """
+        blocksA, blocksB, blocksAB = (
+            self.basisA.original_blocks,
+            self.basisB.original_blocks,
+            self.basisAB.original_blocks,
+        )
+        t_A, t_B = len(blocksA), len(blocksB)
+        assert len(blocksAB) == t_A * t_B, (
+            f"The joint basis must have one block per pair of marginal blocks, "
+            f"got t_AB={len(blocksAB)} but t_A={t_A}, t_B={t_B}"
+        )
+
+        ab_block_indices = np.arange(t_A * t_B)
+        block_indices_A, block_indices_B = ab_block_indices // t_B, ab_block_indices % t_B
+
+        for i, (a, b) in enumerate(zip(block_indices_A, block_indices_B)):
+            assert blocksAB[i].dimension == blocksA[a].dimension * blocksB[b].dimension, (
+                f"Block dimensions do not factorize at joint type {i} ≅ (a={a}, b={b}): "
+                f"{blocksAB[i].dimension} != {blocksA[a].dimension} * {blocksB[b].dimension}"
+            )
+
+        multiplicitiesAB = np.asarray(self.basisAB.multiplicities).reshape(t_A, t_B)
+        np.testing.assert_array_equal(
+            multiplicitiesAB.sum(axis=1),
+            np.asarray(self.basisA.multiplicities),
+            err_msg="The A-marginal of the joint multiplicities μ_{AB} must be μ_A",
+        )
+        np.testing.assert_array_equal(
+            multiplicitiesAB.sum(axis=0),
+            np.asarray(self.basisB.multiplicities),
+            err_msg="The B-marginal of the joint multiplicities μ_{AB} must be μ_B",
+        )
+
+        return block_indices_A, block_indices_B
+
     def _split_marginal_tensor_product(
-        self, basisAB: SingleBlockOrbitOrSubset, basisA: SingleBlockOrbitOrSubset
-    ) -> tuple[list[EndSnOrbitBasis | EndSnOrbitBasisSubset], list[SymmetrizationRelations | None]]:
+        self,
+        marginal_basis: SingleBlockOrbitOrSubset,
+        marginal_block_indices_from_joint: np.ndarray,
+    ) -> tuple[list[SymmetrizationRelations | None], list[list[int]]]:
         """
         'Splits' the End^{S_μ_i} parts of a marginal basis into smaller parts corresponding to each tensor product factor of basisAB.
         This is necessary since the AB system will have blocks where only the B-part of the block is different, and these multiple blocks
         will correspond to a single A block.
         For example, if basisAB has multiplicities [(0,0): 2, (0,1): 1] (that means basisAB is the canonical basis of End^{S_2}((M_0)_A ⊗ (M_0)_B) ⊗ End^{S_1}((M_0)_A ⊗ (M_1)_B)),
         then we split basisA = End^{S_3}(((M_0)_A)^{⊗3}) into End^{S_2}(M_0_A^{⊗2}) ⊗ End^{S_1}(M_0_A^{⊗1})
-        While the parameter is called basisA, this code works for both basisA and basisB.
+        While the example is for basisA, this code works for both basisA and basisB.
 
+        Note that the joint blocks belonging to a single marginal block are contiguous for A (for fixed a they are the
+        i = a*t_B + b) but strided for B (fixed b, varying a).
+
+        :param marginal_basis: the marginal basis (basisA or basisB) to split.
+        :param marginal_block_indices_from_joint: an array mapping each joint block index to its corresponding marginal block index.
         :return: A tuple with elements:
-        1. A list of all the individual tensor product components after the split, i.e.
-            [OrbitBasis of: End^{S_2}(M_0_A^{⊗2}), OrbitBasis of:End^{S_1}(M_0_A^{⊗1})]
-        2. A list of all the symmetrization relations that correspond to the split, i.e. SymmetrizationRelations(M_0, (2,1))
+        1. A list with one entry per marginal block (i.e. per End^{S_μ_i} of the marginal basis), containing the symmetrization relations that correspond to the split,
+            i.e. SymmetrizationRelations(M_0, (2,1)) -- or None for marginal types with multiplicity zero.
+        2. A list with one entry per marginal block, containing the positions (among the tensor product factors of basisAB) of the
+            joint blocks in which the (now split parts of the) marginal block partakes, in the same order as the corresponding
+            ``SymmetrizationRelations.split_basis.bases``. This can be different from the inverse of marginal_block_indices_from_joint, since we drop the zero-multiplicity factors in the tensor product.
         """
+        # Plain ints, since np.int_ does not memoize correctly in the cache keys of SymmetrizationRelations and the
+        # EndSnOrbitBasis it builds from them (cf. the same conversion in EndSnSingleBlockOrbitBasis.__init__)
+        multiplicitiesAB = [int(mu) for mu in self.basisAB.multiplicities]
 
-        AB_mult_cumsum = np.cumsum(basisAB.multiplicities)
-        A_mult_cumsum = np.cumsum(basisA.multiplicities)
+        symmetrization_relations: list[SymmetrizationRelations | None] = []
+        ab_factor_groups: list[list[int]] = []
 
-        A_split_tensor_product_elements = []
-        A_symmetrization_relations = []
-        prev_index = 0
+        non_zero_ab_blocks = [i for i, mu in enumerate(self.basisAB.multiplicities) if mu > 0]
+        ab_factor_position_of_joint_block = {i: position for position, i in enumerate(non_zero_ab_blocks)}
 
-        # Iterate through all different parts of the A marginal tensor product decomposition, i.e. iterate through a in
+        # Iterate through all different parts of the marginal tensor product decomposition, i.e. iterate through a in
         # ⊗_{a = 1}^t End^{S_(μ_{A}_a)}((ℂ^{d_a x d_a})^{μ_A_a})
-        for basisA_orig_block, accumulated_mu, mu in zip(basisA.original_blocks, A_mult_cumsum, basisA.multiplicities):
-            # Now for each block, find all the tensor product elements in the AB tensor product decomposition that correspond to it, we do this
-            # by just counting the number n of 'systems' in the block and taking the respective systems from the AB decomposition
-            joint_idx = prev_index + np.searchsorted(AB_mult_cumsum[prev_index:], accumulated_mu, "left") + 1
-            # This is the index in the tensor product decomposition
-            # We have to be careful here as we allow for μ_i = 0, i.e. blocks which appear zero times. This means that the cumsum can have repeated entries.
-            # Hence we cannot take np.searchsorted(..., 'right'), but have to do 'left' and then add 1
+        for marginal_block_index, (original_block, mu) in enumerate(
+            zip(marginal_basis.original_blocks, marginal_basis.multiplicities)
+        ):
+            # All joint blocks this marginal block is made up of, in increasing order -- which is also the order of the
+            # corresponding tensor factors of basisAB
+            joint_block_indices = [int(i) for i in np.flatnonzero(marginal_block_indices_from_joint == marginal_block_index)]
 
             # TODO: Add some shortcuts to deal with the mu = 1 case specially (since this is just the basis itself)
             if mu > 0:
-                rel = SymmetrizationRelations(basisA_orig_block, basisAB.multiplicities[prev_index:joint_idx])
-                A_symmetrization_relations.append(rel)
-                A_split_tensor_product_elements.extend(rel.split_basis.bases)
-            else:
-                A_symmetrization_relations.append(None)
-
-            prev_index = joint_idx
-
-        return A_split_tensor_product_elements, A_symmetrization_relations
-
-    def _per_factor_marginal_split_indices(
-        self,
-        individual_partial_trace_relation_index_mappings: list[np.ndarray],
-        symmetrization_relations: list[SymmetrizationRelations | None],
-    ):
-        return [
-            # arr is of form split_A_index[AB_index], sym_rel.index_mapping is of form symmetrized_A_index[split_A_index]
-            sum_combinations(
-                [
-                    arr * split_index_multiplier
-                    for arr, split_index_multiplier in zip(grp, sym_rel.split_basis.basis_indices_multiplier)
-                ]
-            ).ravel()
-            if sym_rel
-            else None
-            for grp, sym_rel in zip(
-                take_groups(
-                    individual_partial_trace_relation_index_mappings,
-                    [len(sr.split_basis.bases) if sr else 0 for sr in symmetrization_relations],
-                ),
-                symmetrization_relations,
-            )
-        ]
-
-    def _per_factor_split_indices_to_symmetrized_indices(
-        self, split_indices: list[np.ndarray | None], symmetrization_relations: list[SymmetrizationRelations | None]
-    ):
-        return [
-            sym_rel.index_mapping.index_mapping().as_numpy()[indices] if sym_rel else None
-            for sym_rel, indices in zip(symmetrization_relations, split_indices)
-        ]
-
-    def _symmetrized_indices_to_full_basis_indices(
-        self, per_factor_symmetrized_indices: list[np.ndarray | None], marginal_basis: SingleBlockOrbitOrSubset
-    ):
-        assert len(per_factor_symmetrized_indices) == len(marginal_basis.bases), (
-            f"{{{len(per_factor_symmetrized_indices)} != {len(marginal_basis.bases)}}}"
-        )
-
-        return sum_combinations(
-            (
-                local_idxs * index_multiplier
-                for local_idxs, index_multiplier in zip(
-                    per_factor_symmetrized_indices, marginal_basis.basis_indices_multiplier
+                symmetrization_relations.append(
+                    SymmetrizationRelations(original_block, [multiplicitiesAB[i] for i in joint_block_indices])
                 )
-                if local_idxs is not None
-            ),
-            length=len(per_factor_symmetrized_indices),
-        ).ravel()
+                # SymmetrizationRelations drops the zero-multiplicity parts of the partition, so we do the same here to
+                # keep the group aligned with split_basis.bases
+                ab_factor_groups.append([ab_factor_position_of_joint_block[i] for i in joint_block_indices if multiplicitiesAB[i] > 0])
+            else:
+                symmetrization_relations.append(None)
+                ab_factor_groups.append([])
+
+        return symmetrization_relations, ab_factor_groups
+
+    @staticmethod
+    def _at_ab_factor_axis(arr: np.ndarray, position: int, num_ab_factors: int) -> np.ndarray:
+        """
+        Takes an array of shape (d,) and reshapes it to shape (1, ..., 1, d, 1, ..., 1) where the d is at the position-th axis of a total of num_ab_factors axes.
+        The idea is that this allows us to broadcast the array along the position-th axis of a tensor product of num_ab_factors factors, where the position-th factor has dimension d.
+        This allows factor-by-factor construction of a joint array of shape (d_1, d_2, ..., d_{num_ab_factors}) from per-factor arrays of shape (d_i,) for i = 1, ..., num_ab_factors.
+        Since the joint basis index is the row-major combination of the per-factor indices, raveling such a broadcast array yields values indexed by the joint basis.
+        """
+        return arr.reshape((1,) * position + (arr.shape[0],) + (1,) * (num_ab_factors - position - 1))
+
+    def _split_indices_from_joint(
+        self,
+        per_ab_factor_index_mappings: list[np.ndarray],
+        symmetrization_relations: list[SymmetrizationRelations | None],
+        joint_tensor_product_factors_from_marginal_block_index: list[list[int]],
+    ) -> list[np.ndarray | None]:
+        """
+        For each part of basisABs tensor product decomposition (i.e. each End^{S_(μ_{AB}_i)}((ℂ^{p_i x p_i})^{μ_i})) we are given an index mapping that maps the index of each basis element
+        of that factor to the index of the corresponding basis element of the marginal basis (i.e. the unique C_A or C_B for which the partial trace is non-zero).
+        This function combines all of these individual index mapping into one big index mapping that maps from basisAB to the split (i.e. not yet resymmetrized) marginal basis as constructed in ``_split_marginal_tensor_product``.
+        """
+        num_ab_factors = len(per_ab_factor_index_mappings)
+
+        split_indices: list[np.ndarray | None] = []
+        for sym_rel, group in zip(symmetrization_relations, joint_tensor_product_factors_from_marginal_block_index):
+            if sym_rel is None:
+                split_indices.append(None)
+                continue
+            # A marginal type with non-zero multiplicity is always made up of at least one joint factor
+            assert group, "a marginal type with non-zero multiplicity must claim at least one joint tensor factor"
+
+            indices = np.zeros((1,) * num_ab_factors, dtype=np.int_)
+            for position, split_index_multiplier in zip(group, sym_rel.split_basis.basis_indices_multiplier):
+                # per_ab_factor_index_mappings[position] is of form split_A_index[AB_index] for one factor of basisAB
+                indices = indices + self._at_ab_factor_axis(
+                    per_ab_factor_index_mappings[position] * split_index_multiplier, position, num_ab_factors
+                )
+            split_indices.append(indices)
+        return split_indices
 
     def _marginal_indices_from_joint(
         self,
         split_indices: list[np.ndarray | None],
         symmetrization_relations: list[SymmetrizationRelations | None],
-        full_marginal_basis: EndSnSingleBlockOrbitBasis,
-    ):
-        symmetrized_indices = self._per_factor_split_indices_to_symmetrized_indices(
-            split_indices, symmetrization_relations
-        )
-        return self._symmetrized_indices_to_full_basis_indices(symmetrized_indices, full_marginal_basis)
-
-    def _per_factor_marginal_indices_from_joint(
-        self,
-        individual_partial_trace_relation_index_mappings: list[np.ndarray],
-        symmetrization_relations: list[SymmetrizationRelations | None],
-        full_basis: EndSnSingleBlockOrbitBasis,
-    ) -> list[np.ndarray | None]:
+        full_marginal_basis: SingleBlockOrbitOrSubset,
+    ) -> np.ndarray:
         """
-        Combines the individual partial trace relation index mappings on each tensor factor into a big index mapping, and then takes care
-        of the necessary resymmetrization for any parts of the marginal tensor product decomposition that was previously split (as given by the passed
-        symmetrization relations).
+        Resymmetrizes the per-marginal-type split indices (as returned by ``_split_indices_from_joint``) and combines them
+        into a single index mapping into the full marginal basis.
 
-        :params:
-        individual_partial_trace_relation_index_mappings: How the individual parts of the marginal tensor product decomposition are embedded into the corresponding part of the joint
-        tensor product decomposition.
-        symmetrization_relations: the symmetrization relations according to which individual parts of the tensor product decomposition will be resymmetrized
-        full_basis: The full marginal basis (without any splitting)
-        :return: The index mapping as an array basisAIndex[basisABIndex] (if full_basis is basisA)
+        :return: The index mapping as an array basisAIndex[basisABIndex] (if full_marginal_basis is basisA)
         """
-        assert len(symmetrization_relations) == len(full_basis.bases), (
-            f"{{{len(symmetrization_relations)} != {len(full_basis.bases)}}}"
+        assert len(split_indices) == len(symmetrization_relations) == len(full_marginal_basis.bases), (
+            f"{len(split_indices)} != {len(symmetrization_relations)} != {len(full_marginal_basis.bases)}"
         )
 
-        return [
-            # arr is of form split_A_index[AB_index], sym_rel.index_mapping is of form symmetrized_A_index[split_A_index]
-            sym_rel.index_mapping.index_mapping().as_numpy()[
-                sum_combinations(
-                    [
-                        arr * split_index_multiplier
-                        for arr, split_index_multiplier in zip(grp, sym_rel.split_basis.basis_indices_multiplier)
-                    ]
-                ).ravel()
-            ]
-            if sym_rel
-            else None
-            for grp, sym_rel in zip(
-                take_groups(
-                    individual_partial_trace_relation_index_mappings,
-                    [len(sr.split_basis.bases) if sr else 0 for sr in symmetrization_relations],
-                ),
-                symmetrization_relations,
+        # Marginal types with multiplicity zero have a one-element basis, so their (always zero) index contributes nothing
+        terms = [
+            # sym_rel.index_mapping is of form symmetrized_A_index[split_A_index]
+            sym_rel.index_mapping.index_mapping().as_numpy()[indices] * index_multiplier
+            for sym_rel, indices, index_multiplier in zip(
+                symmetrization_relations, split_indices, full_marginal_basis.basis_indices_multiplier
             )
+            if sym_rel is not None and indices is not None
         ]
+        if not terms:
+            # Nothing to trace over (n = 0), so the joint basis has a single element
+            return np.zeros((1,), dtype=np.int_)
+        return sum(terms).ravel()
 
     def _trace_coefficients(
         self,
@@ -541,51 +545,63 @@ class SingleBlockPartialTraceRelations(BasePartialTraceRelations):
             f"{len(other_marginal_symmetrization_relations)} != {len(other_marginal_split_indices_from_joint)}"
         )
 
-        # TODO: shortcut here on no splitting
-        return multi_vector_kron(
-            np,  # might want to be backend.xp
-            *[
-                multi_vector_kron(
-                    np,  # might want to be backend.xp
-                    *grp,
-                ).ravel()  # This part comes from the individual partial trace relations (for each tensor product factor)
-                * sym_rel.symmetrization_multiplicities.as_numpy()[indices_from_joint]
-                # Indices from joint here are in the symmetric_basis, whereas symmetrization_multiplicities are in the split_basis
-                # And this part adds the multiplicities from the resymmetrization
-                for grp, sym_rel, indices_from_joint in zip(
-                    take_groups(
-                        individual_partial_trace_coefficients,
-                        [len(sr.split_basis.bases) if sr else 0 for sr in other_marginal_symmetrization_relations],
-                    ),
-                    other_marginal_symmetrization_relations,
-                    other_marginal_split_indices_from_joint,
-                )
-                if sym_rel
-            ],
-        )
+        num_ab_factors = len(individual_partial_trace_coefficients)
+
+        # This part comes from the individual partial trace relations (for each tensor product factor)
+        coefficients = np.ones((1,) * num_ab_factors, dtype=np.int_)
+        for position, individual_coefficients in enumerate(individual_partial_trace_coefficients):
+            coefficients = coefficients * self._at_ab_factor_axis(individual_coefficients, position, num_ab_factors)
+
+        # And this part adds the multiplicities from the resymmetrization. Note that the indices from joint are in the
+        # split_basis, which is also what symmetrization_multiplicities is indexed by.
+        for sym_rel, indices_from_joint in zip(
+            other_marginal_symmetrization_relations, other_marginal_split_indices_from_joint
+        ):
+            if sym_rel is None or indices_from_joint is None:
+                continue
+            coefficients = coefficients * sym_rel.symmetrization_multiplicities.as_numpy()[indices_from_joint]
+
+        return coefficients.ravel()
 
     def _calculate_matrices(self):
         # We first 'split' the End^{S_μ_i} parts of both basisA and basisB into smaller parts corresponding to each tensor product factor of basisAB,
         # then later on, we will deal with the combinatorical factors that come up in the resymmetrization of reverting this split.
         # I.e. if basisAB has multiplicities [(0,0): 2, (0,1): 1], then we split basisA = End^{S_3}(M_A^{⊗3}) into End^{S_2}(M_A^{⊗2}) ⊗ End^{S_1}(M_A^{⊗1})
 
-        A_split_tensor_product_elements, A_symmetrization_relations = self._split_marginal_tensor_product(
-            self.basisAB, self.basisA
-        )
-        B_split_tensor_product_elements, B_symmetrization_relations = self._split_marginal_tensor_product(
-            self.basisAB, self.basisB
-        )
+        block_indices_A, block_indices_B = self._marginal_block_indices_from_joint()
 
-        # Filter out the n = 0 terms here (since they are also not part of the split_tensor_product_elements)
+        # Filter out the μ_i = 0 terms here (since they are also not part of the split tensor product elements). Note that
+        # such factors have a one-element basis, so dropping them does not change the (row-major) joint basis index either.
         non_zero_AB = [b for b in self.basisAB.bases if b.n > 0]
 
-        assert len(A_split_tensor_product_elements) == len(B_split_tensor_product_elements) == len(non_zero_AB), (
-            f"{{{len(A_split_tensor_product_elements)}, {len(B_split_tensor_product_elements)}, {len(non_zero_AB)}}}"
+        A_symmetrization_relations, A_joint_tensor_product_factors_from_marginal_block_index = self._split_marginal_tensor_product(
+            self.basisA, block_indices_A
+        )
+        B_symmetrization_relations, B_joint_tensor_product_factors_from_marginal_block_index = self._split_marginal_tensor_product(
+            self.basisB, block_indices_B
         )
 
-        # These are the individual partial trace relations for each of the split parts we just created. The whole point of splitting was that we now
-        # have exactly one marginal factor for each joint factor.
+        # Sort the split parts by the tensor factor of basisAB they belong to. The whole point of splitting was that we now
+        # have exactly one marginal factor (per side) for each joint factor -- but the A- and the B-split visit the joint
+        # factors in a different order, so we cannot simply concatenate the per-marginal-type splits.
+        A_split_tensor_product_elements: list = [None] * len(non_zero_AB)
+        B_split_tensor_product_elements: list = [None] * len(non_zero_AB)
+        for elements, marginal_symmetrization_relations, ab_factor_groups in [
+            (A_split_tensor_product_elements, A_symmetrization_relations, A_joint_tensor_product_factors_from_marginal_block_index),
+            (B_split_tensor_product_elements, B_symmetrization_relations, B_joint_tensor_product_factors_from_marginal_block_index),
+        ]:
+            for sym_rel, group in zip(marginal_symmetrization_relations, ab_factor_groups):
+                if sym_rel is None:
+                    continue
+                assert len(sym_rel.split_basis.bases) == len(group), f"{len(sym_rel.split_basis.bases)} != {len(group)}"
+                for position, basis in zip(group, sym_rel.split_basis.bases):
+                    assert elements[position] is None, f"Joint tensor factor {position} claimed twice"
+                    elements[position] = basis
+        assert all(b is not None for b in A_split_tensor_product_elements + B_split_tensor_product_elements), (
+            "Every tensor factor of basisAB must be claimed by exactly one A-part and one B-part"
+        )
 
+        # These are the individual partial trace relations for each of the split parts we just created.
         relations = [
             PartialTraceRelations(b_A, b_B, b_AB)
             for b_A, b_B, b_AB in zip(
@@ -597,11 +613,11 @@ class SingleBlockPartialTraceRelations(BasePartialTraceRelations):
         for rel in relations:
             rel.ensure_calculated()
 
-        A_split_index_from_joint = self._per_factor_marginal_split_indices(
-            [ptr.A_index_from_joint.as_numpy() for ptr in relations], A_symmetrization_relations
+        A_split_index_from_joint = self._split_indices_from_joint(
+            [ptr.A_index_from_joint.as_numpy() for ptr in relations], A_symmetrization_relations, A_joint_tensor_product_factors_from_marginal_block_index
         )
-        B_split_index_from_joint = self._per_factor_marginal_split_indices(
-            [ptr.B_index_from_joint.as_numpy() for ptr in relations], B_symmetrization_relations
+        B_split_index_from_joint = self._split_indices_from_joint(
+            [ptr.B_index_from_joint.as_numpy() for ptr in relations], B_symmetrization_relations, B_joint_tensor_product_factors_from_marginal_block_index
         )
 
         A_index_from_joint = self._marginal_indices_from_joint(

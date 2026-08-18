@@ -2,7 +2,6 @@ import unittest
 from typing import Any, cast
 
 import numpy as np
-import pytest
 
 from permqit.algebra import EndSnOrbitBasis
 from permqit.algebra.basis import MatrixStandardBasis, MatrixTensorProductBasis
@@ -112,15 +111,16 @@ class TestBlockDecomposeChoiMatrixComposite(unittest.TestCase):
         basisB = EndSnOrbitBasis(3, 2)
         _assert_block_decomposition_consistent(BlockPartialTraceRelations(basisA, basisB))
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="Known pre-existing bug: SingleBlockPartialTraceRelations mismatches per-type splits "
-        "when both basisA and basisB are composite (t>1) simultaneously for n>=2 -- see the TODO on "
-        "SingleBlockPartialTraceRelations in partial_traces.py. Not introduced by, or fixable within, "
-        "block_decompose_choi_matrix.",
-    )
-    def test_composite_both_sides_known_bug(self):
+    def test_composite_both_sides(self):
+        # SingleBlockPartialTraceRelations used to mispair the per-type splits whenever both sides were
+        # composite at once, which for distinct block dimensions like these tripped the dA*dB == dAB
+        # assertion in PartialTraceRelations. See TestBlockPartialTraceRelations in
+        # tests/test_partial_trace_relations.py for the check against an independent reference.
         basisA = EndSnBlockOrbitBasis(2, MatrixStandardBasis(2), MatrixStandardBasis(4))
         basisB = EndSnBlockOrbitBasis(2, MatrixStandardBasis(3), MatrixStandardBasis(5))
-        relations = BlockPartialTraceRelations(basisA, basisB)
-        relations.ensure_calculated()
+        _assert_block_decomposition_consistent(BlockPartialTraceRelations(basisA, basisB))
+
+    def test_composite_both_sides_equal_dimensions(self):
+        basisA = EndSnBlockOrbitBasis(2, MatrixStandardBasis(2), MatrixStandardBasis(2))
+        basisB = EndSnBlockOrbitBasis(2, MatrixStandardBasis(3), MatrixStandardBasis(3))
+        _assert_block_decomposition_consistent(BlockPartialTraceRelations(basisA, basisB))

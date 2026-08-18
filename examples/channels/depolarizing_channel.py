@@ -14,9 +14,7 @@ from typing import cast
 
 import numpy as np
 
-from examples.channels._print_decomposition import print_decomposition_stats
-
-from channels._choi_decomposition import decompose_choi_tensor_product
+from examples.channels._choi_decomposition import decompose_choi_tensor_product, print_decomposition_stats
 from examples.states.isotropic import isotropic_state
 from permqit.algebra import EndSnOrbitBasis
 from permqit.representation.partial_traces import PartialTraceRelations, block_decompose_choi_matrix
