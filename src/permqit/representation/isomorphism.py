@@ -6,7 +6,6 @@ from typing import cast, Sequence, Optional
 
 import numpy as np
 import scipy.linalg
-import sparse
 
 from . import isomorphism_gijswijt
 from ..utilities.caching import WeakRefMemoize
@@ -47,7 +46,7 @@ class EndSnTensorProductIsomorphism(TransitionMatrix):
 
     def _calculate_transition_matrix(self):
         # noinspection PyAbstractClass
-        matrix = sparse.DOK((self.basis_to.size(), self.basis_from.size()), dtype=np.int_)
+        matrix = scipy.sparse.dok_array((self.basis_to.size(), self.basis_from.size()), dtype=np.int_)
         bases = cast(Sequence[EndSnOrbitBasis], self.basis_from.bases)
         for i, o_big in enumerate(self.basis_to.iterate_labels()): # Iterate over all the orbits in End^(S_n)((V_1 ⊗ ... ⊗ V_k)^n)
             # It is not hard to see that this orbit has overlap with only one specific tensor product of orbits, which can be calculated from the count matrix.
@@ -66,7 +65,7 @@ class EndSnTensorProductIsomorphism(TransitionMatrix):
 
             matrix[i, self.basis_from.label_to_index(tuple(PairOrbit(sum.reshape((b.d, b.d))) for sum, b in zip(sums, bases)))] = 1
 
-        return matrix.asformat('gcxs')
+        return matrix.tocsr()
 
 
 
@@ -80,7 +79,11 @@ class BaseEndSnBlockDiagonalization(TransitionMatrix, metaclass=WeakRefMemoize):
     basis_from: EndSnOrbitBasis
     basis_to:  EndSnBlockDiagonalBasis
 
-    default_cache_formats = {StorageFormat.PYDATA_SPARSE, StorageFormat.GPU_SPARSE}
+    # PYDATA_SPARSE is kept cached because some callers (everything that uses ``tensor_product_block_diagonalization``) apply these
+    # matrices to genuinely N-dimensional pydata/sparse coefficient tensors, which only pydata/sparse's
+    # tensordot can contract.
+    # On the other hand PYDATA_SPARSE has a long startup time to pull in the numba JIT, so for tests its nice not to have to pay that cost if we don't need it.
+    default_cache_formats = {StorageFormat.PYDATA_SPARSE, StorageFormat.SCIPY_SPARSE, StorageFormat.GPU_SPARSE}
 
     def __init__(self, n, d):
         self.n = n
@@ -103,7 +106,7 @@ class BaseEndSnBlockDiagonalization(TransitionMatrix, metaclass=WeakRefMemoize):
         returns an array of shape (self.basis_from.size(), m_λ, m_λ), where m_λ is the block size corresponding to the given partition.
         The isomorphism then maps the basis element i to block result[i] (which is an m_λ x m_λ matrix).
         """
-        mat = self.coefficient_transition_matrix(StorageFormat.PYDATA_SPARSE)
+        mat = self.coefficient_transition_matrix(StorageFormat.SCIPY_SPARSE)
         partition_idx = self.basis_to.partitions.index(partition)
         idx_in_basis = self.basis_to.basis_indices_start[partition_idx] # This is the start index of the coefficients corresponding to the block we want
         block_size = self.basis_to.basis_sizes[partition_idx]
@@ -126,7 +129,7 @@ class EndSnBlockDiagonalizationKappa(BaseEndSnBlockDiagonalization):
         size = self.basis_to.size()
         assert size == self.basis_from.size()
         # noinspection PyAbstractClass
-        matrix = sparse.DOK((size, size), dtype=np.int_)
+        matrix = scipy.sparse.dok_array((size, size), dtype=np.int_)
 
         # Iterate over all pairs of SSYT
         for loop in enumerate(self.basis_to.iterate_labels()):
@@ -139,7 +142,7 @@ class EndSnBlockDiagonalizationKappa(BaseEndSnBlockDiagonalization):
                 idx_from = self.basis_from.label_to_index(orbit)
                 matrix[idx_to, idx_from] = coeff
 
-        return matrix.asformat('gcxs')
+        return matrix.tocsr()
 
 class EndSnBlockDiagonalizationGijswijt(BaseEndSnBlockDiagonalization):
     """Uses the construction from https://arxiv.org/abs/0910.4515v1
@@ -155,7 +158,7 @@ class EndSnBlockDiagonalizationGijswijt(BaseEndSnBlockDiagonalization):
         size = self.basis_to.size()
         assert size == self.basis_from.size()
         # noinspection PyAbstractClass
-        matrix = sparse.DOK((size, size), dtype=np.int_)
+        matrix = scipy.sparse.dok_array((size, size), dtype=np.int_)
 
         # Iterate over all pairs of SSYT
         for idx_to, (t1, t2) in enumerate(self.basis_to.iterate_labels()):
@@ -169,7 +172,7 @@ class EndSnBlockDiagonalizationGijswijt(BaseEndSnBlockDiagonalization):
                 # factors that can produce e.g. 59.9999... instead of 60 for n>=7.
                 matrix[idx_to, idx_from] = round(coeff)
 
-        return matrix.asformat('gcxs')
+        return matrix.tocsr()
 
 
 EndSnBlockDiagonalization = EndSnBlockDiagonalizationGijswijt  # faster than Kappa
@@ -222,17 +225,16 @@ class EndSnAlgebraIsomorphism(BaseEndSnBlockDiagonalization):
             # Convert back to CPU numpy array for sparse conversion (if we ever were on GPU)
             adjusted = backend.to_cpu(adjusted)
 
-            new_transition_elements.append(sparse.GCXS.from_numpy(adjusted.reshape(-1, self.basis_from.size())))
+            new_transition_elements.append(scipy.sparse.csr_array(adjusted.reshape(-1, self.basis_from.size())))
 
-        return sparse.concatenate(new_transition_elements)
+        return scipy.sparse.vstack(new_transition_elements)
 
     @caching.cache_noargs
     def inverse(self) -> TransitionMatrix:
-        mat = self.coefficient_transition_matrix(StorageFormat.PYDATA_SPARSE)  # type: sparse.SparseArray
+        mat = self.coefficient_transition_matrix(StorageFormat.SCIPY_SPARSE)
         with ExpensiveComputation(f"Calculating inverse of {str(self)}"):
-            mat = scipy.sparse.linalg.inv(mat.asformat('coo').tocsc())
-            sp = sparse.COO.from_scipy_sparse(mat).asformat('gcxs')
-            return GivenTransitionMatrix(self.basis_to, self.basis_from, sp, cache_formats=self.default_cache_formats)
+            inv = scipy.sparse.linalg.inv(mat.tocsc()).tocsr()
+            return GivenTransitionMatrix(self.basis_to, self.basis_from, inv, cache_formats=self.default_cache_formats)
 
 
 class TrivialAlgebraIsomorphism(EndSnAlgebraIsomorphism):
