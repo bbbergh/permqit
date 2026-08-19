@@ -64,6 +64,7 @@ def block_decompose_amplitude_damping_tensor_power(n: int, gamma: float):
 
 if __name__ == "__main__":
     d = 2
-    print_decomposition_stats(
-        block_decompose_amplitude_damping_tensor_power(n=8, gamma=0.4), d_in=d, d_out=d
-    )
+    n, gamma = 5, .4
+    blocks = block_decompose_amplitude_damping_tensor_power(n=5, gamma=0.4)
+    print(f"Normalized Choi parts of Amplitude Damping Channel for {d=}, {n=}, {gamma=}:")
+    print_decomposition_stats(blocks, d_in=d, d_out=d)

@@ -10,14 +10,10 @@ Its (normalized) Choi matrix equals the isotropic state with mixing parameter (1
 The seesaw expects the UNNORMALIZED Choi (Tr_out = d_in · I_in):
     N_choi = d · isotropic_state(1 - p, d=2, fidelity=False)
 """
-from typing import cast
-
 import numpy as np
 
 from examples.channels._choi_decomposition import decompose_choi_tensor_product, print_decomposition_stats
 from examples.states.isotropic import isotropic_state
-from permqit.algebra import EndSnOrbitBasis
-from permqit.representation.partial_traces import PartialTraceRelations, block_decompose_choi_matrix
 
 __all__ = [
     "depolarizing_choi",
@@ -64,6 +60,7 @@ def block_decompose_depolarizing_tensor_power(n: int, p: float, d: int = 2):
 
 if __name__ == "__main__":
     d = 2
-    print_decomposition_stats(
-        block_decompose_depolarizing_tensor_power(n=5, p=0.4, d=d), d_in=d, d_out=d
-    )
+    n, p = 5, .9
+    blocks = block_decompose_depolarizing_tensor_power(n=5, p=0.4, d=d)
+    print(f"Normalized Choi parts of Depolarizing Channel for {d=}, {n=}, {p=}:")
+    print_decomposition_stats(blocks, d_in=d, d_out=d)

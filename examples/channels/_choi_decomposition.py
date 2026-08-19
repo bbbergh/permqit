@@ -36,6 +36,8 @@ def print_decomposition_stats(blocks: DecomposedChoiBlocks, d_in: int, d_out: in
         is_trace_non_increasing = is_psd(np.eye(m_A) - partial_trace_out)
 
         print(
-            f"  A={label_A[0]!s:<10} B={label_B[0]!s:<10} dim={m_A}x{m_B:<3} "
-            f"CP={is_cp!s:<5} trace-non-increasing={is_trace_non_increasing}"
+            f"Block for: A={label_A[0]!s:<10} B={label_B[0]!s:<10} sub-channel-dim={m_A}->{m_B:<3} "
+            f"CP={is_cp!s:<5} trace-non-increasing={is_trace_non_increasing}: "
         )
+        block_str = np.array2string(np.real_if_close(choi_block), precision=4, suppress_small=True, max_line_width=1000, threshold=1e4)
+        print(block_str)
