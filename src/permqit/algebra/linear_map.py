@@ -538,7 +538,7 @@ class ScatterIndexMapping(LinearMap):
 
         # --- fallback: delegate to __array_namespace__ (e.g. CuPy) ------
         fmt = StorageFormat.detect_format(x)
-        perm = self.index_mapping().get(StorageFormat.NUMPY if fmt.is_gpu() else StorageFormat.GPU)
+        perm = self.index_mapping().get(StorageFormat.GPU if fmt.is_gpu() else StorageFormat.NUMPY)
         xp = array_namespace(x)
         x_moved = xp.moveaxis(x, axis, 0)
         out = xp.zeros((n_to,) + x_moved.shape[1:], dtype=x.dtype)  # ty:ignore[unresolved-attribute]
