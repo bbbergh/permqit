@@ -250,7 +250,7 @@ def compute_fidelity_seesaw(
         raise ValueError("sector_fidelity_weights length must match n_sectors.")
 
     # ---------- Hermitian symmetrization precomputation ----------
-    t_A_xp = backend.xp.asarray(basisA_orbit.transpose_index_lookup())
+    transpose_map_A = basisA_orbit.transpose_map()
     t_R_xp = backend.xp.asarray(np.arange(d_R**2).reshape(d_R, d_R).T.ravel())
 
     # ---------- Power-method hyperparameters ----------
@@ -309,7 +309,7 @@ def compute_fidelity_seesaw(
 
             # Hermitian symmetrization: M_avg = (M_avg + M_avg†) / 2.
             c_M_2d = c_M_avg.reshape(basisA_orbit.size(), basisR.size())
-            c_M_dag = c_M_2d[t_A_xp][:, t_R_xp].conj()
+            c_M_dag = transpose_map_A.apply_to_coefficient_vector(c_M_2d, axis=0)[:, t_R_xp].conj()
             c_M_avg = (0.5 * (c_M_2d + c_M_dag)).ravel()
 
             with MaybeExpensiveComputation("Optimizing encoder"):

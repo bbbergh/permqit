@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import List
 
 import numpy as np
@@ -87,8 +88,7 @@ def get_coefficient_adjoint_RS(X, d_R, basis: 'EndSnOrbitBasis'):
     m_S = basis.size()
     T = X.reshape(d_R, d_R, m_S)
     T_perm = backend.xp.transpose(T, (2, 1, 0))
-    idx = basis.transpose_index_lookup()
-    T_perm = backend.xp.take(T_perm, backend.xp.asarray(idx), axis=0)
+    T_perm = basis.transpose(T_perm, axis=0)
     return T_perm.ravel()
 
 
@@ -109,8 +109,7 @@ def get_coefficient_adjoint_SR(X, d_R, basis: 'EndSnOrbitBasis'):
     m_S = basis.size()
     T = X.reshape(m_S, d_R, d_R)
     T_perm = backend.xp.transpose(T, (2, 1, 0))
-    idx = basis.transpose_index_lookup()
-    T_perm = backend.xp.take(T_perm, backend.xp.asarray(idx), axis=-1)
+    T_perm = basis.transpose(T_perm, axis=-1)
     return T_perm.ravel()
 
 
@@ -121,8 +120,7 @@ def get_coefficient_adjoint_general_RS(
 ) -> np.ndarray:
     """Adjoint of a coefficient vector in RS ordering for m orbit-basis factors.
 
-    Generalises ``gpu_get_coefficient_adjoint_RS`` (1 factor) and
-    ``gpu_get_coefficient_adjoint_subgroup_RS`` (2 factors) to an arbitrary
+    Generalises ``get_coefficient_adjoint_RS`` (1 factor) to an arbitrary
     number of factors.
 
     Applies the d_R index transposition and the combined orbit-transpose
@@ -137,22 +135,18 @@ def get_coefficient_adjoint_general_RS(
         Adjoint coefficients in SR format (∏_i m_i * d_R²,), same device as X.
     """
     m_sizes = [b.size() for b in bases]
-    m_tot = 1
-    for s in m_sizes:
-        m_tot *= s
+    m_tot = math.prod(m_sizes)
 
-    X_arr = X
-    T = X_arr.reshape(d_R, d_R, m_tot)
+    T = X.reshape(d_R, d_R, m_tot)
     T_perm = backend.xp.transpose(T, (2, 1, 0))  # (m_tot, d_R, d_R) — SR layout with transposed R
 
-    # Build combined orbit-transpose permutation over all factors.
-    idx_arrays = [np.asarray(b.transpose_index_lookup()) for b in bases]
-    grid = np.arange(m_tot, dtype=np.int64).reshape(m_sizes)
-    for axis, t_idx in enumerate(idx_arrays):
-        grid = np.take(grid, t_idx, axis=axis)
-    t_to_tt = grid.ravel()
+    # Split the combined m_tot axis back into one axis per factor, and apply each
+    # basis's own orbit-transpose independently along its axis.
+    T_split = T_perm.reshape(tuple(m_sizes) + (d_R, d_R))
+    for axis, basis in enumerate(bases):
+        T_split = basis.transpose(T_split, axis=axis)
 
-    return T_perm[backend.xp.asarray(t_to_tt), :, :].ravel()
+    return T_split.reshape(m_tot, d_R, d_R).ravel()
 
 
 def get_coefficient_adjoint_general_SR(
@@ -175,19 +169,15 @@ def get_coefficient_adjoint_general_SR(
         Adjoint coefficients in RS format (d_R² * ∏_i m_i,), same device as X.
     """
     m_sizes = [b.size() for b in bases]
-    m_tot = 1
-    for s in m_sizes:
-        m_tot *= s
+    m_tot = math.prod(m_sizes)
 
-    X_arr = X
-    T = X_arr.reshape(m_tot, d_R, d_R)
+    T = X.reshape(m_tot, d_R, d_R)
     T_perm = backend.xp.transpose(T, (2, 1, 0))  # (d_R, d_R, m_tot) — RS layout with transposed R
 
-    # Build combined orbit-transpose permutation over all factors.
-    idx_arrays = [np.asarray(b.transpose_index_lookup()) for b in bases]
-    grid = np.arange(m_tot, dtype=np.int64).reshape(m_sizes)
-    for axis, t_idx in enumerate(idx_arrays):
-        grid = np.take(grid, t_idx, axis=axis)
-    t_to_tt = grid.ravel()
+    # Split the combined m_tot axis back into one axis per factor, and apply each
+    # basis's own orbit-transpose independently along its axis.
+    T_split = T_perm.reshape((d_R, d_R) + tuple(m_sizes))
+    for axis, basis in enumerate(bases):
+        T_split = basis.transpose(T_split, axis=2 + axis)
 
-    return T_perm[:, :, backend.xp.asarray(t_to_tt)].ravel()
+    return T_split.reshape(d_R, d_R, m_tot).ravel()

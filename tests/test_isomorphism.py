@@ -29,7 +29,7 @@ class TestEndSnBlockDiagonalization(unittest.TestCase):
             for d in [2, 3]:
                 orbits = EndSnOrbitBasis(n, d)
                 vec = np.random.randn(orbits.size())
-                vec = vec + vec[orbits.transpose_index_lookup()]
+                vec = vec + orbits.transpose(vec)
                 iso = EndSnBlockDiagonalization(n, d)
                 full_eigenvalues = np.linalg.eigvals(orbits.linear_combination(vec))
                 min_ev = - np.min(full_eigenvalues)

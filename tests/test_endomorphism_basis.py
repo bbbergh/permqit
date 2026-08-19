@@ -517,11 +517,11 @@ class TestEndSnOrbitBasisTranspose(unittest.TestCase):
                 np.testing.assert_array_almost_equal(transposed, symmetric_coeffs)
 
     def test_transpose_index_lookup_consistency(self):
-        """Test that transpose_index_lookup is consistent with direct orbit transpose."""
+        """Test that transpose_map()'s index mapping is consistent with direct orbit transpose."""
         for n in [2, 3]:
             for d in [2, 3]:
                 basis = EndSnOrbitBasis(n, d)
-                lookup = basis.transpose_index_lookup()
+                lookup = basis.transpose_map().index_mapping().as_numpy()
 
                 # Verify each entry matches the expected transposed orbit index
                 for idx, orbit in enumerate(basis.iterate_labels()):

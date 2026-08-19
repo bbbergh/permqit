@@ -115,10 +115,6 @@ class EndSnOrbitBasis(MatrixBasis[PairOrbit]):
     def transpose(self, coeffs: np.ndarray, axis: int = -1) -> np.ndarray:
         return self.transpose_map().apply_to_coefficient_vector(coeffs, axis=axis)
 
-    @deprecated("Use the functionality of transpose_map() (with buil_in multiformat caching) instead of accessing the numpy array directly")
-    def transpose_index_lookup(self):
-        return self.transpose_map().index_mapping().as_numpy()
-
     @property
     def dimension(self) -> int:
         return self.d**self.n
@@ -612,7 +608,7 @@ class EndSnOrbitBasisSubset(MatrixBasisSubset[PairOrbit]):
         """Returns an additional subset of this subset which only includes count_matrices whose transpose is also in the set.
         This means that the subset this function returns is sufficient to capture all symmetric/hermitian matrices which live on the original subset.
         """
-        valid_transpose_indices = self.subset_of.transpose_index_lookup()[self.valid_indices]
+        valid_transpose_indices = self.subset_of.transpose_map().index_mapping().as_numpy()[self.valid_indices]
         return self.intersect_with_valid_indices(valid_transpose_indices)
 
     @cached_property
