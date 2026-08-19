@@ -107,7 +107,7 @@ class TestTensorProductBasis(unittest.TestCase):
         """Set up test fixtures."""
         self.basis1 = VectorStandardBasis(2)
         self.basis2 = VectorStandardBasis(3)
-        self.tensor_basis = TensorProductBasis([self.basis1, self.basis2])
+        self.tensor_basis = TensorProductBasis((self.basis1, self.basis2))
 
     def test_size(self):
         """Test that size returns the product of component sizes."""
@@ -179,7 +179,7 @@ class TestTensorProductBasis(unittest.TestCase):
         basis1 = VectorStandardBasis(2)
         basis2 = VectorStandardBasis(2)
         basis3 = VectorStandardBasis(2)
-        tensor_basis = TensorProductBasis([basis1, basis2, basis3])
+        tensor_basis = TensorProductBasis((basis1, basis2, basis3))
 
         self.assertEqual(tensor_basis.size(), 8)
         self.assertEqual(tensor_basis.n, 3)
@@ -195,7 +195,7 @@ class TestTensorProductBasis(unittest.TestCase):
     def test_empty_bases_assertion(self):
         """Test that empty bases list raises assertion error."""
         with self.assertRaises(AssertionError):
-            TensorProductBasis([])
+            TensorProductBasis(())
 
     def test_canonical_ordering(self):
         """Test and verify that TensorProductBasis uses CANONICAL ordering.
