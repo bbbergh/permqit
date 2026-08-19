@@ -1,6 +1,6 @@
 import os
 
-# Disable numba JIT to avoid sparse/numba compatibility issues
+# Disable numba JIT to avoid long startup time for every test
 os.environ["NUMBA_DISABLE_JIT"] = "1"
 
 def pytest_collection_modifyitems(items, config):

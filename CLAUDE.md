@@ -33,7 +33,7 @@ uv run ty check                      # type check
 ```
 
 Notes on tests:
-- `tests/conftest.py` sets `NUMBA_DISABLE_JIT=1` to avoid sparse/numba compatibility issues, and forces `slow`/`veryslow`-marked tests to be skipped unless explicitly selected with `-m`.
+- `tests/conftest.py` sets `NUMBA_DISABLE_JIT=1` to avoid a long startup time for tests, and forces `slow`/`veryslow`-marked tests to be skipped unless explicitly selected with `-m`.
 - Requires Python >= 3.12.
 
 ## GPU backend
