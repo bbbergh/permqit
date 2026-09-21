@@ -1,7 +1,6 @@
 """Lay out the ancillary directory as one anc/ tree with one subfolder per channel.
 
     anc/
-      README.txt
       verify.py
       Flagged_X_Z_Independent/   fidelities.txt, optimal_encoders/, optimal_decoders_n17/
       depolarizing/              fidelities.txt, optimal_encoders/, fidelity_vs_p_n1-20.npz
