@@ -3,6 +3,9 @@ from datetime import timedelta
 
 
 class ExpensiveComputation:
+    """
+    Provides a context manager that prints (to stdout) at the start and end of the context, along with the time spent inside the context in seconds.
+    """
     depth = 0
     def __init__(self, name):
         self.name = name
@@ -22,8 +25,10 @@ class ExpensiveComputation:
         type(self).depth -= 1
 
 class MaybeExpensiveComputation:
+    """
+    Provides a context manager that calculates the time spent inside the context in seconds, and prints it to stdout if it exceeds a given threshold.
+    """
     interval: float
-    """After the context manager has finished, holds the time spent inside in seconds."""
 
     def __init__(self, name: str, threshold: timedelta = timedelta(seconds=1)):
         self.name, self.threshold = name, threshold

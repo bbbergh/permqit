@@ -15,7 +15,6 @@ from typing import Iterable, Tuple, Sequence, Any
 import numpy as np
 import scipy.sparse as sp
 import sparse
-from sparse import SparseArray
 
 from .basis import MatrixBasis, Basis, MatrixStandardBasis, DenseOrSparse, dtypeT
 from .basis_subset import MatrixBasisSubset
@@ -25,7 +24,6 @@ from ..representation.orbits import PairOrbit
 from ..representation.combinatorics import weak_composition_to_index, weak_composition_from_index, weak_compositions
 from ..utilities import caching
 from ..utilities.timing import ExpensiveComputation, MaybeExpensiveComputation
-from ..utilities.deprecated import deprecated
 
 
 __all__ = [
