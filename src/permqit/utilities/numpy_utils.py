@@ -57,7 +57,7 @@ def contract_at_axis[T: ArrayAPICompatible](matrix: T, ndvector: T, matrix_axis:
     vector_axis = vector_axis % ndvector.ndim
 
     return xp.moveaxis(
-        xp.tensordot(ndvector, matrix, ([vector_axis], [matrix_axis])),  # ty:ignore[no-matching-overload]
+        xp.tensordot(ndvector, matrix, axes=([vector_axis], [matrix_axis])),  # axes is keyword-only in the array API  # ty:ignore[no-matching-overload]
         tuple(range(-target_num_axes, 0)),
         tuple(range(vector_axis, vector_axis + target_num_axes)),
     )

@@ -233,7 +233,9 @@ class EndSnAlgebraIsomorphism(BaseEndSnBlockDiagonalization):
     def inverse(self) -> TransitionMatrix:
         mat = self.coefficient_transition_matrix(StorageFormat.SCIPY_SPARSE)
         with ExpensiveComputation(f"Calculating inverse of {str(self)}"):
-            inv = scipy.sparse.linalg.inv(mat.tocsc()).tocsr()
+            inv = scipy.sparse.linalg.inv(mat.tocsc())
+            # scipy >= 1.15 returns a dense ndarray for 1 x 1 input, which has no .tocsr()
+            inv = inv.tocsr() if hasattr(inv, "tocsr") else scipy.sparse.csr_array(np.atleast_2d(inv))
             return GivenTransitionMatrix(self.basis_to, self.basis_from, inv, cache_formats=self.default_cache_formats)
 
 

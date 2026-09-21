@@ -86,6 +86,7 @@ def _optimize_decoder(
     iso_tuple: IsoTuple,
     power_max_iter: int,
     power_tol: float,
+    skip_zero_M_blocks: bool = False,
 ):
     """Optimize decoder for one sector via power iteration.
 
@@ -109,6 +110,7 @@ def _optimize_decoder(
         isos=list(iso_tuple),
         power_max_iterations=power_max_iter,
         power_tolerance=power_tol,
+        skip_zero_M_blocks=skip_zero_M_blocks,
     )
     c_D_adj = result.get_optimizers()
     if isinstance(c_D_adj, (list, tuple)):
@@ -146,6 +148,8 @@ def compute_fidelity_seesaw(
     seed: int = DEFAULT_SEED,
     checkpoint_path: Optional[str] = None,
     checkpoint_threshold: float = 0.75,
+    initial_encoder: Optional[NDArray] = None,
+    initial_decoders: Optional[List[NDArray]] = None,
 ) -> SDPResult:
     """Low-level seesaw over pre-built orbit-basis channel representations.
 
@@ -205,6 +209,14 @@ def compute_fidelity_seesaw(
         Save best encoder/decoders as .npz when fidelity >= ``checkpoint_threshold``.
     checkpoint_threshold:
         Minimum fidelity to trigger a checkpoint save.
+    initial_encoder:
+        Warm start for the *first* repetition: orbit-basis Choi coefficients of an encoder, as
+        returned in ``SDPResult.get_optimizers()[0]``.  Later repetitions still start from fresh
+        random seeds.  Together with ``initial_decoders`` this makes a long run resumable: stop
+        after any number of iterations, store the optimizers, and continue from them later.
+    initial_decoders:
+        Warm start for the first repetition: one orbit-basis decoder per output sector, in SR
+        format, as returned in ``SDPResult.get_optimizers()[1]``.
 
     Returns
     -------
@@ -213,6 +225,13 @@ def compute_fidelity_seesaw(
         ``.get_optimizers()`` → ``(c_E, [c_D_k])`` when ``return_optimizers=True``.
         ``.get_time()`` → total power-method time when ``timing_analysis=True``.
     """
+    # ``isometry=True`` selects the fully-isometric encoder ansatz: the encoder is constrained to
+    # a genuine isometry V : C^d_R -> Sym^n(A) throughout, which (i) makes the encoder half-step a
+    # monotone polar ascent on 2 d_R dim Sym^n(A) real parameters instead of an SDP over all
+    # blocks, and (ii) makes most output blocks of the channel vanish identically, so the decoder
+    # half-step can skip them.  ``isometry="blockwise"`` / ``False`` keep the previous behaviour.
+    isometric = isometry is True
+
     n_sectors = len(c_N_sectors)
     if n_sectors == 0:
         raise ValueError("c_N_sectors must have at least one element.")
@@ -270,9 +289,23 @@ def compute_fidelity_seesaw(
         if verbose:
             print(f"\n[Repetition {rep + 1}/{repetitions}] Initializing encoder and decoders...")
 
+        warm_start = rep == 0 and initial_encoder is not None
         with MaybeExpensiveComputation("Initializing encoder"):
-            c_E = random_perm_inv_encoder(iso_A, d_R, isometry=isometry, seed=rep_seed)
-        c_D_list = [_init_decoder(iso_t, d_R, isometry, rep_seed) for iso_t in output_sector_isos]
+            c_E = (
+                backend.xp.asarray(initial_encoder)
+                if warm_start
+                else random_perm_inv_encoder(iso_A, d_R, isometry=isometry, seed=rep_seed)
+            )
+        if rep == 0 and initial_decoders is not None:
+            if len(initial_decoders) != n_sectors:
+                raise ValueError(
+                    f"initial_decoders has {len(initial_decoders)} entries, expected {n_sectors}"
+                )
+            c_D_list = [backend.xp.asarray(c) for c in initial_decoders]
+        else:
+            c_D_list = [
+                _init_decoder(iso_t, d_R, bool(isometry), rep_seed) for iso_t in output_sector_isos
+            ]
 
         F_E: float = 0.0
         F_D_avg: float = 0.0
@@ -289,7 +322,10 @@ def compute_fidelity_seesaw(
             t_dec = 0.0
             with MaybeExpensiveComputation(f"Optimizing {n_sectors} decoder(s)"):
                 for c_M_k, c_D_k, iso_t in zip(c_M_dec, c_D_list, output_sector_isos):
-                    F_D_k, c_D_k_new, t_k = _optimize_decoder(c_M_k, c_D_k, d_R, iso_t, power_max_iter, power_tol)
+                    F_D_k, c_D_k_new, t_k = _optimize_decoder(
+                        c_M_k, c_D_k, d_R, iso_t, power_max_iter, power_tol,
+                        skip_zero_M_blocks=isometric,
+                    )
                     F_D_sectors.append(F_D_k)
                     new_c_D_list.append(c_D_k_new)
                     t_dec += t_k or 0.0
@@ -314,7 +350,12 @@ def compute_fidelity_seesaw(
 
             with MaybeExpensiveComputation("Optimizing encoder"):
                 _c_M_adj = get_coefficient_adjoint_SR(c_M_avg, d_R, iso_A.basis_from)
-                _enc_result = power_iteration.preparation_coefficient(
+                _encoder_step = (
+                    power_iteration.isometric_preparation_coefficient
+                    if isometric
+                    else power_iteration.preparation_coefficient
+                )
+                _enc_result = _encoder_step(
                     _c_M_adj,
                     c_E,
                     d_R,
@@ -397,6 +438,8 @@ def compute_tensor_product_fidelity_seesaw(
     seed: int = DEFAULT_SEED,
     checkpoint_path: Optional[str] = None,
     checkpoint_threshold: float = 0.75,
+    initial_encoder: Optional[np.ndarray] = None,
+    initial_decoders: Optional[List[np.ndarray]] = None,
 ) -> SDPResult:
     """Compute entanglement fidelity for a permutation-invariant tensor-product channel.
 
@@ -485,6 +528,8 @@ def compute_tensor_product_fidelity_seesaw(
         seed=seed,
         checkpoint_path=checkpoint_path,
         checkpoint_threshold=checkpoint_threshold,
+        initial_encoder=initial_encoder,
+        initial_decoders=initial_decoders,
     )
 
     # ==================================================================

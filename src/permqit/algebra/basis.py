@@ -346,7 +346,7 @@ class MatrixTensorProductBasis[LabelT](TensorProductBasis[LabelT], MatrixBasis[t
     
     def trace[T: ArrayAPICompatible](self, coeffs: T, axis=-1) -> T|float:
         axis = axis % coeffs.ndim
-        traced = coeffs.reshape(coeffs[:axis] + tuple(b.size() for b in self.bases) + coeffs[axis+1:])
+        traced = coeffs.reshape(coeffs.shape[:axis] + tuple(b.size() for b in self.bases) + coeffs.shape[axis+1:])
         for basis in self.bases:
             traced = basis.trace(traced, axis=axis) # After trace the axis is removed, so we don't have to increment  # ty:ignore[invalid-argument-type]
         return traced

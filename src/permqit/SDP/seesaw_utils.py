@@ -9,26 +9,41 @@ from ..algebra import EndSnOrbitBasis, CoefficientData, EndSnOrbitBasisSubset, B
 from ..representation.isomorphism import EndSnAlgebraIsomorphism
 from ..representation.partial_traces import PartialTraceRelations, BasePartialTraceRelations
 from ..utilities import backend
-from ..utilities.random import random_channel_with_permutation_invariant_output, random_permutation_invariant_channel
+from ..utilities.random import (
+    random_channel_with_permutation_invariant_output,
+    random_permutation_invariant_channel,
+    random_symmetric_isometric_channel,
+)
 
 
 def random_perm_inv_encoder(iso_A: EndSnAlgebraIsomorphism, d_R: int, isometry=False, seed: int|np.random.Generator|None=None):
     """
     Returns the Choi matrix coefficients of a random permutation-invariant encoder.
 
-    This is constructed by taking mixtures of random channels onto the different
-    blocks of the block-diagonalization of End^{Sn}(V^n) and appropriately
-    renormalising them.
-
     Args:
-        ctx: FullContext containing simulation parameters
-        isometry: Whether to use isometric encoding
-        seed: Random seed for reproducibility
+        iso_A: Algebra isomorphism for the encoder's output system A^n.
+        d_R: Reference system dimension.
+        isometry: how to sample.
+
+            * ``True`` -- a *genuine* isometry V : C^d_R -> Sym^n(A).  Its Choi matrix has rank
+              one and is supported on the single block lambda = (n); see
+              ``random_symmetric_isometric_channel``.  Requires n > d_A (so that the
+              antisymmetric partition is absent) and dim Sym^n(A) >= d_R.
+            * ``"blockwise"`` -- a Dirichlet mixture over the irrep blocks of per-block
+              isometries.  This is *not* an isometry (its Choi rank is sum_lambda f_lambda), but
+              it is the historical behaviour of ``isometry=True`` and is kept for reproducing
+              earlier runs.
+            * ``False`` -- a generic random permutation-invariant channel.
+
+        seed: Random seed for reproducibility.
 
     Returns:
         Coefficients of the Choi Matrix in the orbit basis
     """
-    return random_channel_with_permutation_invariant_output(d_R, iso_A, isometry=isometry, seed=seed, TP = True, U = False, xp=backend.xp)
+    if isometry is True:
+        return random_symmetric_isometric_channel(d_R, iso_A, seed=seed, xp=backend.xp)
+    blockwise = isometry == "blockwise"
+    return random_channel_with_permutation_invariant_output(d_R, iso_A, isometry=blockwise, seed=seed, TP = True, U = False, xp=backend.xp)
 
 
 def random_perm_inv_decoder(isos: list[EndSnAlgebraIsomorphism], d_R: int, isometry: bool = False, seed: int|np.random.Generator|None=None):
@@ -45,7 +60,12 @@ def random_perm_inv_decoder(isos: list[EndSnAlgebraIsomorphism], d_R: int, isome
         isometry: Whether to use isometric channels.
         seed: Random seed.
     """
-    return random_permutation_invariant_channel([iso.basis_from for iso in isos] + [EndSnOrbitBasis(1, d_R)], (-1,), isometry=isometry, seed=seed)
+    # A decoder B^n -> R is dimension-reducing, so no genuine isometry exists; ``isometry`` here
+    # can only ever mean the blockwise variant, and is just a seeding heuristic.
+    return random_permutation_invariant_channel(
+        [iso.basis_from for iso in isos] + [EndSnOrbitBasis(1, d_R)], (-1,),
+        isometry=bool(isometry), seed=seed,
+    )
 
 
 def get_coefficient_AlicePOV(c_N: CoefficientData, c_D: CoefficientData, basisA: "EndSnOrbitBasis|EndSnOrbitBasisSubset", basisB: "EndSnOrbitBasis|EndSnOrbitBasisSubset", basisAB: "EndSnOrbitBasis|EndSnOrbitBasisSubset", basisR: Basis):

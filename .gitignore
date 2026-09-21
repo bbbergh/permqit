@@ -104,3 +104,17 @@ tests/compare_memory_usage.py
 tests/run_memory_comparison.py
 tests/run_memory_seesaw_cq.py
 tests/test_memory_seesaw_cq.py
+
+# Ancillary operator archives: too large for git (85 MB / 27 MB / 22 MB), and git keeps every
+# version forever.  Distribute them via Zenodo or a GitHub release instead.  The companion
+# *_encoders_n1-20.npz files (18 kB) ARE tracked: the encoder is the essential object, and the
+# decoder follows from it by solving the recovery SDP.
+anc/superactivation_operators_n1-20.npz
+anc/superactivation_operators_n17.npz
+anc/superactivation_operators_n17_aux.npz
+anc_2/depolarizing_operators_n1-20.npz
+anc_2/amplitude_damping_operators_n1-20.npz
+
+# scratch from long unattended runs
+logs/
+results/

@@ -7,7 +7,7 @@ from numpy.linalg import inv
 from scipy.linalg import sqrtm
 
 from ..algebra import EndSnIrrepBasis, MatrixTensorProductBasis, EndSnOrbitBasis
-from ..representation.isomorphism import tensor_product_inverse_block_diagonalization, tensor_product_block_diagonalization_basis, EndSnAlgebraIsomorphism, EndSnBlockDiagonalization
+from ..representation.isomorphism import tensor_product_inverse_block_diagonalization, tensor_product_block_diagonalization, tensor_product_block_diagonalization_basis, EndSnAlgebraIsomorphism, EndSnBlockDiagonalization, TrivialAlgebraIsomorphism
 from ..utilities.numpy_utils import ArrayAPICompatible
 from .general_functions import choi_representation, partial_trace
 
@@ -230,3 +230,114 @@ def random_channel_with_permutation_invariant_output(
     :return: Coefficients of the Choi Matrix of the channel R -> A^n in the TensorProductBasis([MatrixStandardBasis(d_R), EndSnOrbitBasis(n, d_A)])
     """
     return random_permutation_invariant_channel([EndSnOrbitBasis(1, d_R), iso_A.basis_from], isometry=isometry, seed=seed, TP=TP, U=U, xp=xp)
+
+
+def symmetric_block_index(iso_A: EndSnAlgebraIsomorphism) -> int:
+    """Index of the fully symmetric partition (n) in ``iso_A.basis_to.partitions``.
+
+    This is the only block with multiplicity f_lambda = 1 whenever n > d_A (the antisymmetric
+    partition (1^n) has more than d_A rows and is therefore absent), and hence the only block
+    that can support a *genuine* isometry (see ``random_symmetric_isometric_channel``).
+    """
+    n = iso_A.basis_from.n
+    for i, partition in enumerate(iso_A.basis_to.partitions):
+        if tuple(partition) == (n,):
+            return i
+    raise ValueError(f"No symmetric partition ({n},) in {iso_A.basis_to.partitions}")
+
+
+def isometry_into_symmetric_block(V: np.ndarray, d_R: int, iso_A: EndSnAlgebraIsomorphism, *, xp=np):
+    """Choi coefficients of the isometric channel ``rho -> V rho V^dagger``, V: C^d_R -> Sym^n(A).
+
+    ``V`` is given in the (orthonormal) SSYT basis of the irrep V_(n), i.e. the Dicke basis for
+    d_A = 2, and must satisfy V^dagger V = I_{d_R}.
+
+    The Choi matrix J = (id_R (x) E)(|Gamma><Gamma|) of an isometry is the rank-one projector
+    onto |v> = sum_i |i>_R (x) V|i>, which lives entirely in the lambda = (n) block since
+    f_(n) = 1.  All other blocks are exactly zero.
+
+    :return: flat coefficients in TensorProductBasis([MatrixStandardBasis(d_R), EndSnOrbitBasis(n, d_A)])
+    """
+    trivial = TrivialAlgebraIsomorphism(d_R)
+    isos = [trivial, iso_A]
+    sym_idx = symmetric_block_index(iso_A)
+    m_sym = iso_A.basis_to.block_sizes[sym_idx]
+
+    V = np.asarray(V, dtype=np.complex128)
+    if V.shape != (m_sym, d_R):
+        raise ValueError(f"V must have shape ({m_sym}, {d_R}), got {V.shape}")
+    deviation = float(np.max(np.abs(V.conj().T @ V - np.eye(d_R))))
+    if deviation > 1e-8:
+        raise ValueError(f"V is not an isometry: ||V^dag V - I||_max = {deviation:.3e}")
+
+    v = V.T.ravel()  # v[i * m_sym + s] = V[s, i]
+    blocks = [
+        np.outer(v, v.conj()) if i == sym_idx else np.zeros((d_R * m, d_R * m), dtype=np.complex128)
+        for i, m in enumerate(iso_A.basis_to.block_sizes)
+    ]
+    return xp.asarray(tensor_product_inverse_block_diagonalization(blocks, isos).ravel())
+
+
+def symmetric_isometry_from_choi_coefficients(c_E, d_R: int, iso_A: EndSnAlgebraIsomorphism, *, tol: float = 1e-8):
+    """Inverse of ``isometry_into_symmetric_block``: recover V from Choi coefficients.
+
+    Raises ``ValueError`` if the encoder is not an isometry into Sym^n(A), i.e. if it has weight
+    outside the lambda = (n) block or if that block is not rank one (both up to ``tol``).
+
+    :return: V of shape (dim Sym^n(A), d_R) in the SSYT (Dicke, for d_A = 2) basis, with
+        V^dagger V = I_{d_R}.
+    """
+    from ..utilities import backend
+
+    trivial = TrivialAlgebraIsomorphism(d_R)
+    blocks = tensor_product_block_diagonalization(backend.xp.asarray(c_E), [trivial, iso_A])
+    sym_idx = symmetric_block_index(iso_A)
+
+    for i, block in enumerate(blocks):
+        if i == sym_idx or getattr(block, "size", 0) == 0:
+            continue
+        weight = abs(float(np.real(np.trace(np.asarray(backend.to_cpu(block))))))
+        if weight > tol:
+            raise ValueError(
+                f"Encoder is not supported on the symmetric block: block {i} carries weight {weight:.3e}"
+            )
+
+    B = np.asarray(backend.to_cpu(blocks[sym_idx]), dtype=np.complex128)
+    B = 0.5 * (B + B.conj().T)
+    eigs, vecs = np.linalg.eigh(B)
+    order = np.argsort(np.real(eigs))[::-1]
+    eigs, vecs = np.real(eigs)[order], vecs[:, order]
+    if eigs.size > 1 and eigs[1] > tol:
+        raise ValueError(
+            f"Encoder Choi block is not rank one (second eigenvalue {eigs[1]:.3e}); it is not an isometry"
+        )
+    m_sym = B.shape[0] // d_R
+    v = np.sqrt(max(eigs[0], 0.0)) * vecs[:, 0]
+    V = v.reshape(d_R, m_sym).T
+    deviation = float(np.max(np.abs(V.conj().T @ V - np.eye(d_R))))
+    if deviation > 1e-6:
+        raise ValueError(f"Recovered V is not an isometry: ||V^dag V - I||_max = {deviation:.3e}")
+    return V
+
+
+def random_symmetric_isometric_channel(
+    d_R, iso_A: EndSnAlgebraIsomorphism, *, seed: int | np.random.Generator | None = None, xp=np
+):
+    """Choi coefficients of a Haar-random *genuine* isometry V : C^d_R -> Sym^n(A).
+
+    Contrast with ``random_permutation_invariant_channel(..., isometry=True)``, which returns a
+    Dirichlet *mixture* over the irrep blocks of per-block isometries.  That mixture is a valid
+    permutation-invariant channel but its Choi matrix has rank sum_lambda f_lambda > 1, so it is
+    not an isometry.  The channel returned here has Choi rank exactly one.
+    """
+    sym_idx = symmetric_block_index(iso_A)
+    m_sym = iso_A.basis_to.block_sizes[sym_idx]
+    if m_sym < d_R:
+        raise ValueError(
+            f"No isometry C^{d_R} -> Sym^n(A) exists: dim Sym^n(A) = {m_sym} < d_R = {d_R}"
+        )
+    rng = seed if isinstance(seed, np.random.Generator) else np.random.default_rng(seed)
+    X = (rng.standard_normal((m_sym, d_R)) + 1j * rng.standard_normal((m_sym, d_R))) / np.sqrt(2)
+    Q, R = np.linalg.qr(X)
+    V = Q * (np.sign(np.real(np.diag(R))) + 0.0)[None, :]  # fix the QR sign ambiguity -> Haar
+    return isometry_into_symmetric_block(V, d_R, iso_A, xp=xp)
