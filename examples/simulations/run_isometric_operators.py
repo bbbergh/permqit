@@ -16,7 +16,7 @@ Channels
 
 Usage
 -----
-    uv run python examples/simulations/run_isometric_operators.py \
+    uv run python -m examples.simulations.run_isometric_operators \
         --channel depolarizing --param 0.151020 --n-values 1 2 3 4 5 6 \
         --seeds 18 42 137 --out results/depolarizing_isometric.npz
 """
@@ -24,23 +24,20 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
 import time
 
 import numpy as np
 
-sys.path.insert(0, ".")
-from examples.channels.amplitude_damping_channel import amplitude_damping_choi  # noqa: E402
-from examples.channels.depolarizing_channel import depolarizing_choi  # noqa: E402
-from examples.simulations.run_flagged_pauli_operators import (  # noqa: E402
-    CHOI_IDENTITY, DEFAULT_P, choi_pauli, decoder_blocks,
-)
-from permqit.power_method.seesaw import compute_tensor_product_fidelity_seesaw  # noqa: E402
-from permqit.representation.combinatorics import weak_compositions  # noqa: E402
-from permqit.representation.isomorphism import (  # noqa: E402
+from examples.channels.amplitude_damping_channel import amplitude_damping_choi
+from examples.channels.depolarizing_channel import depolarizing_choi
+from examples.channels.superactivation_channel import DEFAULT_P, superactivation_choi
+from examples.simulations.run_flagged_pauli import decoder_blocks
+from permqit.power_method.seesaw import compute_tensor_product_fidelity_seesaw
+from permqit.representation.combinatorics import weak_compositions
+from permqit.representation.isomorphism import (
     EndSnAlgebraIsomorphism, EndSnBlockDiagonalization,
 )
-from permqit.utilities.random import symmetric_isometry_from_choi_coefficients  # noqa: E402
+from permqit.utilities.random import symmetric_isometry_from_choi_coefficients
 
 
 def _atomic_savez(path, payload):
@@ -61,7 +58,7 @@ def build_channel(name: str, param: float):
     if name == "amplitude_damping":
         return amplitude_damping_choi(param), 0.5, 1
     if name == "flagged_pauli":
-        return [choi_pauli(param), CHOI_IDENTITY], 0.5, 2
+        return superactivation_choi(param), 0.5, 2
     raise ValueError(f"unknown channel {name!r}")
 
 

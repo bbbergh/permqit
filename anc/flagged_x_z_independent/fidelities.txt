@@ -1,4 +1,4 @@
-# channel: Flagged_X_Z_Independent
+# channel: flagged_x_z_independent
 #   flagged mixture  N(rho) = q |0><0|_Z (x) id(rho) + (1-q) |1><1|_Z (x) P_p(rho),
 #   P_p the Pauli channel ((1-p)/2, p/2, p/2, (1-p)/2) = binary symmetric channel
 # parameter: 0.4142135623730951

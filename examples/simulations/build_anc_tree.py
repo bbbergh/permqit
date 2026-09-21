@@ -2,7 +2,7 @@
 
     anc/
       verify.py
-      Flagged_X_Z_Independent/   fidelities.txt, optimal_encoders/, optimal_decoders_n17/
+      flagged_x_z_independent/   fidelities.txt, optimal_encoders/, optimal_decoders_n17/
       depolarizing/              fidelities.txt, optimal_encoders/, fidelity_vs_p_n1-20.npz
       amplitude_damping/         fidelities.txt, optimal_encoders/, fidelity_vs_gamma_n1-20.npz
 
@@ -11,7 +11,7 @@ particular library.  Decoders are kept on the local machine (local_data/, git-ig
 for n = 17 of the flagged channel, which ships here so that the superactivation claim can be
 checked end to end.
 
-    uv run python examples/simulations/build_anc_tree.py
+    uv run python -m examples.simulations.build_anc_tree
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ import shutil
 import numpy as np
 
 SRC = {
-    "Flagged_X_Z_Independent": ("local_data/superactivation_operators_n1-20.npz", None),
+    "flagged_x_z_independent": ("local_data/superactivation_operators_n1-20.npz", None),
     "depolarizing": ("local_data/depolarizing_operators_n1-20.npz",
                      ("anc_2/depolarizing_fidelity_n1-20.npz", "fidelity_vs_p_n1-20.npz")),
     "amplitude_damping": ("local_data/amplitude_damping_operators_n1-20.npz",
@@ -29,7 +29,7 @@ SRC = {
                            "fidelity_vs_gamma_n1-20.npz")),
 }
 DESCRIPTION = {
-    "Flagged_X_Z_Independent":
+    "flagged_x_z_independent":
         "flagged mixture  N(rho) = q |0><0|_Z (x) id(rho) + (1-q) |1><1|_Z (x) P_p(rho),\n"
         "#   P_p the Pauli channel ((1-p)/2, p/2, p/2, (1-p)/2) = binary symmetric channel",
     "depolarizing": "N_p(rho) = (1-p) rho + p I/2",
@@ -42,7 +42,7 @@ def write_fidelities(path, channel, param, q, d_R, ns, fids):
         fh.write(f"# channel: {channel}\n")
         fh.write(f"#   {DESCRIPTION[channel]}\n")
         fh.write(f"# parameter: {param!r}\n")
-        if channel == "Flagged_X_Z_Independent":
+        if channel == "flagged_x_z_independent":
             fh.write(f"# mixing q: {q!r}\n")
         fh.write(f"# reference dimension d_R: {d_R}\n")
         fh.write("# entanglement fidelity of the optimal isometric encoder/decoder pair,\n")
@@ -97,7 +97,7 @@ def main():
         if sweep is not None and os.path.exists(sweep[0]):
             shutil.copy(sweep[0], os.path.join(root, sweep[1]))
 
-        if channel == "Flagged_X_Z_Independent":
+        if channel == "flagged_x_z_independent":
             dec_dir = os.path.join(root, "optimal_decoders_n17")
             os.makedirs(dec_dir, exist_ok=True)
             payload = {k[len("n17_"):]: d[k] for k in d.files if k.startswith("n17_")}

@@ -25,11 +25,11 @@ Usage
 -----
 Run with defaults (n_sym=15, n_nonsym=7, p∈[0,0.2], 50 p values)::
 
-    python -m permqit.simulations.run_depolarizing_sym --save results_small_p.npz
+    python -m permqit.simulations.run_depolarizing --save results_small_p.npz
 
 Custom parameters::
 
-    python -m permqit.simulations.run_depolarizing_sym --n-sym 10 --n-nonsym 5 --n-p 25 --save results.npz
+    python -m permqit.simulations.run_depolarizing --n-sym 10 --n-nonsym 5 --n-p 25 --save results.npz
 
 Plot results::
 

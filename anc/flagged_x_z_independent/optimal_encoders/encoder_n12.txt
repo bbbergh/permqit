@@ -1,4 +1,4 @@
-# optimal encoder for Flagged_X_Z_Independent, n = 12, parameter 0.4142135623730951
+# optimal encoder for flagged_x_z_independent, n = 12, parameter 0.4142135623730951
 # isometry V : C^d_R -> Sym^n(C^2), so that E(rho) = V rho V^dagger.
 # 13 rows = Dicke basis |D^12_w>, w = 0 .. 12;  2 columns = V|0>, V|1>.
 # columns below: Re(V[w,0]) Im(V[w,0]) Re(V[w,1]) Im(V[w,1])

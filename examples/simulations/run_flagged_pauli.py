@@ -17,7 +17,7 @@ V in the Dicke basis, alongside the Choi blocks of every decoder.
 
 Usage
 -----
-    uv run python examples/simulations/run_flagged_pauli_operators.py --n 17 \
+    uv run python -m examples.simulations.run_flagged_pauli --n 17 \
         --seeds 18 42 137 --iterations 2000 --out results/flagged_pauli_n17.npz
 """
 from __future__ import annotations
@@ -27,6 +27,7 @@ import time
 
 import numpy as np
 
+from examples.channels.superactivation_channel import DEFAULT_P, superactivation_choi
 from permqit.power_method.seesaw import compute_tensor_product_fidelity_seesaw
 from permqit.representation.combinatorics import weak_compositions
 from permqit.representation.isomorphism import (
@@ -37,20 +38,6 @@ from permqit.representation.isomorphism import (
 )
 from permqit.utilities.backend import to_cpu
 from permqit.utilities.random import symmetric_isometry_from_choi_coefficients
-
-DEFAULT_P = 1.0 / (1.0 + 2.0**0.5)
-
-
-def choi_pauli(p: float) -> np.ndarray:
-    """Choi matrix of the BSC(p) = Pauli channel ((1-p)/2, p/2, p/2, (1-p)/2)."""
-    return np.array(
-        [[1 - p, 0, 0, 0], [0, p, 0, 0], [0, 0, p, 0], [0, 0, 0, 1 - p]], dtype=np.complex128
-    )
-
-
-CHOI_IDENTITY = np.array(
-    [[1, 0, 0, 1], [0, 0, 0, 0], [0, 0, 0, 0], [1, 0, 0, 1]], dtype=np.complex128
-)
 
 
 def decoder_blocks(c_D_k, d_R: int, iso_tuple):
@@ -90,7 +77,7 @@ def load_checkpoint(path, n_sectors):
 
 def run(n, d_R, p, q, seeds, iterations, accuracy, out_path, power_tolerance, verbose,
         chunk=0, resume=False, warm_encoder=None):
-    J = [choi_pauli(p), CHOI_IDENTITY]
+    J = superactivation_choi(p)
     iso_A = EndSnAlgebraIsomorphism(EndSnBlockDiagonalization(n, 2))
     iso_B = {k: EndSnAlgebraIsomorphism(EndSnBlockDiagonalization(k, 2)) for k in range(n + 1)}
     sector_isos = [tuple(iso_B[k] for k in comp) for comp in weak_compositions(n, 2)]

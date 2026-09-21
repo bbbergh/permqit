@@ -1,7 +1,7 @@
 """Shared default parameters for symmetric seesaw simulation scripts.
 
 These constants govern the number of random seeds, seesaw iterations, and
-power method convergence criteria used by run_depolarizing_sym.py,
+power method convergence criteria used by run_depolarizing.py,
 run_amplitude_damping.py, and similar production simulation scripts.
 """
 from permqit.power_method.seesaw import (

@@ -25,15 +25,11 @@ def random_perm_inv_encoder(iso_A: EndSnAlgebraIsomorphism, d_R: int, isometry=F
         d_R: Reference system dimension.
         isometry: how to sample.
 
-            * ``True`` -- a *genuine* isometry V : C^d_R -> Sym^n(A).  Its Choi matrix has rank
-              one and is supported on the single block lambda = (n); see
-              ``random_symmetric_isometric_channel``.  Requires n > d_A (so that the
-              antisymmetric partition is absent) and dim Sym^n(A) >= d_R.
-            * ``"blockwise"`` -- a Dirichlet mixture over the irrep blocks of per-block
-              isometries.  This is *not* an isometry (its Choi rank is sum_lambda f_lambda), but
-              it is the historical behaviour of ``isometry=True`` and is kept for reproducing
-              earlier runs.
-            * ``False`` -- a generic random permutation-invariant channel.
+            * ``True``: an isometry V : C^d_R -> Sym^n(A), see
+              ``random_symmetric_isometric_channel``. Requires n > d_A and dim Sym^n(A) >= d_R.
+            * ``"blockwise"``: a Dirichlet mixture over the irrep blocks of per-block isometries.
+              Its Choi rank is sum_lambda f_lambda, so this is not an isometry.
+            * ``False``: a generic random permutation-invariant channel.
 
         seed: Random seed for reproducibility.
 
@@ -60,8 +56,7 @@ def random_perm_inv_decoder(isos: list[EndSnAlgebraIsomorphism], d_R: int, isome
         isometry: Whether to use isometric channels.
         seed: Random seed.
     """
-    # A decoder B^n -> R is dimension-reducing, so no genuine isometry exists; ``isometry`` here
-    # can only ever mean the blockwise variant, and is just a seeding heuristic.
+    # A decoder B^n -> R is dimension-reducing, so ``isometry`` can only mean the blockwise variant.
     return random_permutation_invariant_channel(
         [iso.basis_from for iso in isos] + [EndSnOrbitBasis(1, d_R)], (-1,),
         isometry=bool(isometry), seed=seed,

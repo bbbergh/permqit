@@ -233,11 +233,10 @@ def random_channel_with_permutation_invariant_output(
 
 
 def symmetric_block_index(iso_A: EndSnAlgebraIsomorphism) -> int:
-    """Index of the fully symmetric partition (n) in ``iso_A.basis_to.partitions``.
+    """Index of the symmetric partition (n) in ``iso_A.basis_to.partitions``.
 
-    This is the only block with multiplicity f_lambda = 1 whenever n > d_A (the antisymmetric
-    partition (1^n) has more than d_A rows and is therefore absent), and hence the only block
-    that can support a *genuine* isometry (see ``random_symmetric_isometric_channel``).
+    For n > d_A this is the only partition with multiplicity f_lambda = 1, the antisymmetric one
+    having more than d_A rows, and hence the only block able to support an isometry.
     """
     n = iso_A.basis_from.n
     for i, partition in enumerate(iso_A.basis_to.partitions):
@@ -249,12 +248,9 @@ def symmetric_block_index(iso_A: EndSnAlgebraIsomorphism) -> int:
 def isometry_into_symmetric_block(V: np.ndarray, d_R: int, iso_A: EndSnAlgebraIsomorphism, *, xp=np):
     """Choi coefficients of the isometric channel ``rho -> V rho V^dagger``, V: C^d_R -> Sym^n(A).
 
-    ``V`` is given in the (orthonormal) SSYT basis of the irrep V_(n), i.e. the Dicke basis for
-    d_A = 2, and must satisfy V^dagger V = I_{d_R}.
-
-    The Choi matrix J = (id_R (x) E)(|Gamma><Gamma|) of an isometry is the rank-one projector
-    onto |v> = sum_i |i>_R (x) V|i>, which lives entirely in the lambda = (n) block since
-    f_(n) = 1.  All other blocks are exactly zero.
+    ``V`` is given in the (orthonormal) SSYT basis of the irrep V_(n), the Dicke basis for
+    d_A = 2, and must satisfy V^dagger V = I_{d_R}. The Choi matrix is the rank-one projector onto
+    |v> = sum_i |i>_R (x) V|i>, which lies entirely in the lambda = (n) block since f_(n) = 1.
 
     :return: flat coefficients in TensorProductBasis([MatrixStandardBasis(d_R), EndSnOrbitBasis(n, d_A)])
     """
@@ -323,12 +319,11 @@ def symmetric_isometry_from_choi_coefficients(c_E, d_R: int, iso_A: EndSnAlgebra
 def random_symmetric_isometric_channel(
     d_R, iso_A: EndSnAlgebraIsomorphism, *, seed: int | np.random.Generator | None = None, xp=np
 ):
-    """Choi coefficients of a Haar-random *genuine* isometry V : C^d_R -> Sym^n(A).
+    """Choi coefficients of a Haar-random isometry V : C^d_R -> Sym^n(A).
 
-    Contrast with ``random_permutation_invariant_channel(..., isometry=True)``, which returns a
-    Dirichlet *mixture* over the irrep blocks of per-block isometries.  That mixture is a valid
-    permutation-invariant channel but its Choi matrix has rank sum_lambda f_lambda > 1, so it is
-    not an isometry.  The channel returned here has Choi rank exactly one.
+    Unlike ``random_permutation_invariant_channel(..., isometry=True)``, which mixes per-block
+    isometries and so has Choi rank sum_lambda f_lambda, the channel returned here has Choi rank
+    one and is therefore an isometry.
     """
     sym_idx = symmetric_block_index(iso_A)
     m_sym = iso_A.basis_to.block_sizes[sym_idx]
@@ -339,5 +334,5 @@ def random_symmetric_isometric_channel(
     rng = seed if isinstance(seed, np.random.Generator) else np.random.default_rng(seed)
     X = (rng.standard_normal((m_sym, d_R)) + 1j * rng.standard_normal((m_sym, d_R))) / np.sqrt(2)
     Q, R = np.linalg.qr(X)
-    V = Q * (np.sign(np.real(np.diag(R))) + 0.0)[None, :]  # fix the QR sign ambiguity -> Haar
+    V = Q * np.sign(np.real(np.diag(R)))[None, :]  # fixes the QR sign ambiguity, giving Haar
     return isometry_into_symmetric_block(V, d_R, iso_A, xp=xp)

@@ -10,7 +10,7 @@ Layout
 ------
   <channel>/fidelities.txt                    entanglement fidelity, indexed by n
   <channel>/optimal_encoders/encoder_nNN.txt  the optimal encoder for that n
-  Flagged_X_Z_Independent/optimal_decoders_n17/decoders_n17.npz
+  flagged_x_z_independent/optimal_decoders_n17/decoders_n17.npz
                                               decoder + Alice-POV blocks for n = 17
 
 What is checked
@@ -185,7 +185,7 @@ def main():
         print("=" * 78)
         enc_ok, ns, fids = check_encoders(root, channel, args.tol, args.verbose)
         ok &= enc_ok
-        if channel == "Flagged_X_Z_Independent":
+        if channel == "flagged_x_z_independent":
             ok &= check_decoders_n17(root, fids[ns.index(17)], args.tol, args.verbose)
             best = max(fids)
             print(f"  superactivation: max_n F = {best:.16f} "

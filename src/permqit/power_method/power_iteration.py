@@ -175,14 +175,9 @@ def power_iteration(
         max_iterations: Maximum number of power iterations.
         tolerance: Convergence tolerance (absolute and relative).
         verbose: Print fidelity at each iteration.
-        skip_zero_M_blocks: Heisenberg picture only.  Blocks whose M^lambda vanishes contribute
-            nothing to the fidelity and are left completely unconstrained by the optimization; the
-            iteration drives them to the canonical unital point I_R (x) I_m / d_R (M @ C @ M = 0,
-            followed by the null-space fill in ``_normalize_blocks``).  Setting this fixes them
-            there directly and skips all work on them, which is exactly equivalent and is a large
-            saving when the encoder is supported on the symmetric block only -- then the channel's
-            selection rule forces most output blocks to vanish (e.g. 240 of 330 at n=17 for the
-            flagged Pauli channel).
+        skip_zero_M_blocks: Heisenberg picture only. Blocks with M^λ = 0 contribute nothing to
+            the fidelity and are driven by the iteration to I_R ⊗ I_m / d_R. Setting this places
+            them there directly and skips them.
 
     Returns:
         (final_fidelity, final_C_blocks, num_iterations, time_elapsed)
@@ -223,7 +218,6 @@ def power_iteration(
                   for M in M_blocks]
         for i, (act, m) in enumerate(zip(active, block_sizes_m)):
             if not act and m > 0:
-                # the unique point the full iteration converges to when M^lambda = 0
                 C_blocks[i] = backend.xp.eye(d_R * m, dtype=C_blocks[i].dtype) / d_R
         idx = [i for i, act in enumerate(active) if act]
     else:
@@ -250,7 +244,7 @@ def power_iteration(
             C = hermitianize(C)
             eigs, vecs = _eigh_psd_project(C)
             if eigs is None:
-                continue  # keep the previous iterate for this block; see _eigh_psd_project
+                continue
             C_blocks[i] = (
                 vecs * backend.xp.maximum(backend.xp.real(eigs), 0.0).astype(C.dtype)[None, :]
             ) @ vecs.conj().T
@@ -392,26 +386,20 @@ def isometric_preparation_coefficient(
     power_tolerance: Optional[float] = None,
     use_warmstart: bool = True,
 ):
-    """Encoder half-step restricted to *genuine* isometries V : C^d_R -> Sym^n(A).
+    """Optimize an isometric encoder V : C^d_R → Sym^n(A) using polar iteration.
 
-    A permutation-invariant encoder is an isometry iff its Choi matrix is rank one, which (for
-    n > d_A) forces it into the single multiplicity-free block lambda = (n).  Writing
-    |v> = sum_i |i>_R (x) V|i>, the half-step is therefore
+    A permutation-invariant encoder is an isometry iff its Choi matrix is rank one, which for
+    n > d_A forces it into the multiplicity-free block λ = (n). With |v> = Σ_i |i>_R ⊗ V|i>, the
+    half-step is
 
-        maximise  <v| M^(n) |v>   subject to   V^dagger V = I_{d_R},
+        max <v| M^(n) |v>   subject to   V^† V = I_{d_R},
 
-    a convex quadratic on the Stiefel manifold whenever M^(n) >= 0, which holds in every real use
-    since M is the Choi matrix of a CP map.  We solve it by the polar ("Procrustes") ascent
-    K <- polar(dF/dKbar), which increases the objective monotonically because a convex function
-    dominates its linearisation and the linearised problem is solved exactly by the polar factor.
-    (Monotonicity, like that of the generic power step, relies on M >= 0; it is not checked here
-    because doing so on every call would be needlessly expensive.)
+    a quadratic on the Stiefel manifold, convex for M^(n) ≥ 0 as holds for the Choi matrix of a
+    CP map. The polar iteration K ← polar(∂F/∂K̄) increases the objective monotonically.
 
-    This is *the same map* as the generic Schroedinger-picture power step restricted to the
-    lambda = (n) block: there M @ C @ M followed by the trace-preserving normalization
-    (T^{-1/2} (x) I) . (T^{-1/2} (x) I) is exactly G -> G (G^dagger G)^{-1/2} = polar(G).  Using the
-    SVD-based polar factor directly is numerically better conditioned and cannot trigger the
-    null-space fill, which is what lets the isometric path converge to machine precision.
+    Restricted to λ = (n) this is the Schrödinger-picture step of ``power_iteration``: there
+    M @ C @ M followed by the trace-preserving normalization is G → G (G^† G)^{-1/2} = polar(G).
+    Taking the polar factor from an SVD avoids the pseudoinverse in ``matrix_inverse_sqrt``.
 
     Args:
         c_M: Flat orbit-basis coefficient vector of M (the adjoint-side AlicePOV operator).
@@ -424,8 +412,7 @@ def isometric_preparation_coefficient(
         use_warmstart: Ignored (kept for API compatibility).
 
     Returns:
-        SDPResult(fidelity, time=elapsed, optimizers=c_E), with c_E the Choi coefficients of an
-        exact isometry.
+        SDPResult(fidelity, time=elapsed, optimizers=c_E)
     """
     import time as _time
 
@@ -499,13 +486,10 @@ __all__ = [
 def _eigh_psd_project(C):
     """``eigh`` for the per-block PSD projection, tolerant of LAPACK non-convergence.
 
-    LAPACK occasionally fails to converge on a badly scaled block (the normalization steps divide
-    by pseudo-inverse square roots, which can leave a block spanning many orders of magnitude).
-    Rescaling to unit max-norm almost always fixes it; if it still fails we return ``(None, None)``
-    and the caller keeps the previous iterate for that block, which costs one iteration of
-    progress instead of aborting a multi-hour run.
-
-    Returns ``(eigenvalues, eigenvectors)``, or ``(None, None)`` if the decomposition failed.
+    The normalization steps divide by pseudoinverse square roots and can leave a block spanning
+    many orders of magnitude, on which ``eigh`` occasionally fails to converge. Rescaling to unit
+    max-norm normally fixes it; if it does not, ``(None, None)`` is returned and the caller keeps
+    the previous iterate for that block.
     """
     try:
         return backend.xp.linalg.eigh(C)

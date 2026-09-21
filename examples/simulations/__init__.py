@@ -3,7 +3,7 @@ Simulation entry points for seesaw optimization and asymptotic bounds.
 
 Main scripts (run with ``python -m permqit.simulations.<name>``):
 
-- ``run_depolarizing_sym``      — depolarizing channel, symmetric seesaw
+- ``run_depolarizing``          — depolarizing channel, symmetric seesaw
 - ``run_amplitude_damping``     — amplitude damping channel
 - ``run_seesaw_cq_power``       — CQ seesaw (GPU power method)
 - ``run_superactivation_operators`` — save optimal operators for n=17

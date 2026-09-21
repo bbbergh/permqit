@@ -210,10 +210,8 @@ def compute_fidelity_seesaw(
     checkpoint_threshold:
         Minimum fidelity to trigger a checkpoint save.
     initial_encoder:
-        Warm start for the *first* repetition: orbit-basis Choi coefficients of an encoder, as
-        returned in ``SDPResult.get_optimizers()[0]``.  Later repetitions still start from fresh
-        random seeds.  Together with ``initial_decoders`` this makes a long run resumable: stop
-        after any number of iterations, store the optimizers, and continue from them later.
+        Warm start for the first repetition: orbit-basis Choi coefficients of an encoder, as
+        returned in ``SDPResult.get_optimizers()[0]``. Later repetitions use fresh random seeds.
     initial_decoders:
         Warm start for the first repetition: one orbit-basis decoder per output sector, in SR
         format, as returned in ``SDPResult.get_optimizers()[1]``.
@@ -225,11 +223,6 @@ def compute_fidelity_seesaw(
         ``.get_optimizers()`` → ``(c_E, [c_D_k])`` when ``return_optimizers=True``.
         ``.get_time()`` → total power-method time when ``timing_analysis=True``.
     """
-    # ``isometry=True`` selects the fully-isometric encoder ansatz: the encoder is constrained to
-    # a genuine isometry V : C^d_R -> Sym^n(A) throughout, which (i) makes the encoder half-step a
-    # monotone polar ascent on 2 d_R dim Sym^n(A) real parameters instead of an SDP over all
-    # blocks, and (ii) makes most output blocks of the channel vanish identically, so the decoder
-    # half-step can skip them.  ``isometry="blockwise"`` / ``False`` keep the previous behaviour.
     isometric = isometry is True
 
     n_sectors = len(c_N_sectors)
