@@ -5,8 +5,9 @@ identity and the independent X-Z Pauli channel of ``pauli_channel``:
 
     N(rho) = q |0><0|_Z (x) id(rho)_B + (1-q) |1><1|_Z (x) P_p(rho)_B,
 
-where P_p applies X with probability p and Z with probability 1/2, and the classical flag Z is
-delivered to the receiver. Both branches have zero quantum capacity, yet the mixture does not.
+where P_p is the independent X-Z channel with p_X = p_Y = p/2, i.e. an X flip with probability p
+and complete dephasing, and the classical flag Z is delivered to the receiver. Both branches
+have zero quantum capacity, yet the mixture does not.
 
 The flag is classical, so for n uses the flag string reveals how many uses k took the noisy
 branch, and the n-use channel decomposes into the n+1 sectors
@@ -45,9 +46,9 @@ def superactivation_choi(p: float = DEFAULT_P) -> list[np.ndarray]:
     branches with the mixing probabilities and builds the n+1 flag sectors itself.
 
     Args:
-        p: Probability of an X error in the noisy branch (default: DEFAULT_P).
+        p: Probability of an X flip in the noisy branch (default: DEFAULT_P).
     """
-    return [independent_xz_choi(p), identity_choi()]
+    return [independent_xz_choi(p / 2, p / 2), identity_choi()]
 
 
 def superactivation_flagged_choi(p: float = DEFAULT_P, q: float = 0.5) -> np.ndarray:
@@ -58,10 +59,10 @@ def superactivation_flagged_choi(p: float = DEFAULT_P, q: float = 0.5) -> np.nda
     from ``superactivation_choi`` instead.
 
     Args:
-        p: Probability of an X error in the noisy branch.
+        p: Probability of an X flip in the noisy branch.
         q: Probability of the identity branch.
     """
-    branches = [(q, identity_choi()), (1 - q, independent_xz_choi(p))]
+    branches = [(q, identity_choi()), (1 - q, independent_xz_choi(p / 2, p / 2))]
     J = np.zeros((16, 16), dtype=complex)
     for flag, (weight, branch) in enumerate(branches):
         block = weight * branch.reshape(2, 2, 2, 2)  # (A, B, A', B')

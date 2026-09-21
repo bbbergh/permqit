@@ -4,12 +4,18 @@ A mixed Pauli channel applies I, X, Y, Z with probabilities (p_I, p_X, p_Y, p_Z)
 
     P(rho) = p_I rho + p_X X rho X + p_Y Y rho Y + p_Z Z rho Z.
 
-The independent X-Z channel applies X with probability p_x and Z with probability p_z,
-independently, i.e. (p_I, p_X, p_Y, p_Z) = ((1-p_x)(1-p_z), p_x(1-p_z), p_x p_z, (1-p_x)p_z).
+The independent X-Z channel applies X with probability q_X and Z with probability q_Z,
+independently of each other, so its Pauli weights factorize:
 
-For p_z = 1/2 the Z part dephases completely and the channel reduces to the binary symmetric
-channel with crossover p_x; this is the noisy branch of the superactivation channel, see
-``superactivation_channel``.
+    (p_I, p_X, p_Y, p_Z) = ((1-q_X)(1-q_Z), q_X(1-q_Z), q_X q_Z, (1-q_X)q_Z).
+
+Equivalently, a Pauli channel is of this form iff p_I p_Y = p_X p_Z, which leaves it determined
+by (p_X, p_Y) alone: q_X = p_X + p_Y and q_Z = p_Y / (p_X + p_Y).  This is the parametrization
+used by ``independent_xz_choi``.
+
+For p_X = p_Y the Z part dephases completely (q_Z = 1/2) and the channel reduces to the binary
+symmetric channel with crossover q_X; that is the noisy branch of the superactivation channel,
+see ``superactivation_channel``.
 """
 import numpy as np
 
@@ -51,26 +57,33 @@ def pauli_choi(p_I: float, p_X: float, p_Y: float, p_Z: float) -> np.ndarray:
     return J
 
 
-def independent_xz_choi(p_x: float, p_z: float = 0.5) -> np.ndarray:
+def independent_xz_choi(p_X: float, p_Y: float) -> np.ndarray:
     """Return the unnormalized Choi matrix of the independent X-Z Pauli channel.
 
-    X is applied with probability p_x and Z with probability p_z, independently of each other.
+    The channel is fixed by its X and Y weights: independence of the X and Z flips means
+    p_I p_Y = p_X p_Z, so the flip probabilities are q_X = p_X + p_Y and q_Z = p_Y / q_X, and
+    the remaining weights follow as p_I = (1-q_X)(1-q_Z) and p_Z = (1-q_X) q_Z.
 
     Args:
-        p_x: Probability of an X error.
-        p_z: Probability of a Z error (default 1/2, i.e. complete dephasing).
+        p_X: Weight of the X Pauli.
+        p_Y: Weight of the Y Pauli.  Equal weights give q_Z = 1/2, complete dephasing.
     """
-    return pauli_choi((1 - p_x) * (1 - p_z), p_x * (1 - p_z), p_x * p_z, (1 - p_x) * p_z)
+    q_X = p_X + p_Y
+    if q_X <= 0:
+        raise ValueError("p_X + p_Y must be positive; with no X or Y weight the independent "
+                         "X-Z channel is not determined by (p_X, p_Y).")
+    q_Z = p_Y / q_X
+    return pauli_choi((1 - q_X) * (1 - q_Z), p_X, p_Y, (1 - q_X) * q_Z)
 
 
-def block_decompose_pauli_tensor_power(n: int, p_x: float, p_z: float = 0.5):
+def block_decompose_pauli_tensor_power(n: int, p_X: float, p_Y: float):
     """Decompose the normalized Choi matrix of the independent X-Z channel to the n-th tensor
     power into its components between the irrep blocks of End^(S_n)(C^2)."""
-    return decompose_choi_tensor_product(independent_xz_choi(p_x, p_z) / 2, d_in=2, d_out=2, n=n)
+    return decompose_choi_tensor_product(independent_xz_choi(p_X, p_Y) / 2, d_in=2, d_out=2, n=n)
 
 
 if __name__ == "__main__":
-    n, p_x = 5, 1.0 / (1.0 + 2.0**0.5)
-    blocks = block_decompose_pauli_tensor_power(n=n, p_x=p_x)
-    print(f"Normalized Choi parts of the independent X-Z channel for {n=}, {p_x=}:")
+    n, p = 5, 1.0 / (1.0 + 2.0**0.5)
+    blocks = block_decompose_pauli_tensor_power(n=n, p_X=p / 2, p_Y=p / 2)
+    print(f"Normalized Choi parts of the independent X-Z channel for {n=}, p_X = p_Y = {p / 2}:")
     print_decomposition_stats(blocks, d_in=2, d_out=2)
