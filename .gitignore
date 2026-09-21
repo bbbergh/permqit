@@ -105,15 +105,11 @@ tests/run_memory_comparison.py
 tests/run_memory_seesaw_cq.py
 tests/test_memory_seesaw_cq.py
 
-# Ancillary operator archives: too large for git (85 MB / 27 MB / 22 MB), and git keeps every
-# version forever.  Distribute them via Zenodo or a GitHub release instead.  The companion
-# *_encoders_n1-20.npz files (18 kB) ARE tracked: the encoder is the essential object, and the
-# decoder follows from it by solving the recovery SDP.
-anc/superactivation_operators_n1-20.npz
-anc/superactivation_operators_n17.npz
-anc/superactivation_operators_n17_aux.npz
-anc_2/depolarizing_operators_n1-20.npz
-anc_2/amplitude_damping_operators_n1-20.npz
+# Full per-n operator archives (decoders for every n, ~86 MB) live on the local machine only:
+# git keeps every version forever, and for a fixed encoder the decoder carries no extra
+# information -- it is the solution of the recovery SDP.  anc/ ships the encoders for every n
+# plus the n=17 decoders needed to check superactivation end to end.
+local_data/
 
 # scratch from long unattended runs
 logs/

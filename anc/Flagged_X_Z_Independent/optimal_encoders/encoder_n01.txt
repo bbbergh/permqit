@@ -1,0 +1,7 @@
+# optimal encoder for Flagged_X_Z_Independent, n = 1, parameter 0.4142135623730951
+# isometry V : C^d_R -> Sym^n(C^2), so that E(rho) = V rho V^dagger.
+# 2 rows = Dicke basis |D^1_w>, w = 0 .. 1;  2 columns = V|0>, V|1>.
+# columns below: Re(V[w,0]) Im(V[w,0]) Re(V[w,1]) Im(V[w,1])
+# V^dagger V = I to machine precision; check with verify.py
++2.26307149071087066e-01  +0.00000000000000000e+00  -8.55613462927031110e-01  -4.65521939694930775e-01
++1.63752843836169004e-01  +9.60192730869633082e-01  -7.31983586318419033e-02  +2.14142303187127209e-01

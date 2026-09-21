@@ -1,0 +1,8 @@
+# optimal encoder for amplitude_damping, n = 2, parameter 0.5102040816326531
+# isometry V : C^d_R -> Sym^n(C^2), so that E(rho) = V rho V^dagger.
+# 3 rows = Dicke basis |D^2_w>, w = 0 .. 2;  2 columns = V|0>, V|1>.
+# columns below: Re(V[w,0]) Im(V[w,0]) Re(V[w,1]) Im(V[w,1])
+# V^dagger V = I to machine precision; check with verify.py
++9.14103162213195652e-01  +0.00000000000000000e+00  +1.50640292055295055e-01  -3.76461035484874695e-01
++4.01060271622533382e-01  -5.97120042704295806e-02  -2.10916721211197117e-01  +8.89435750519604440e-01
++6.28437908459928839e-04  +3.85965931092720823e-04  -1.33833021354885589e-03  +9.91188447313759435e-04

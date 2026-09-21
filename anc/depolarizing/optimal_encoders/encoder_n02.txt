@@ -1,0 +1,8 @@
+# optimal encoder for depolarizing, n = 2, parameter 0.15102040816326534
+# isometry V : C^d_R -> Sym^n(C^2), so that E(rho) = V rho V^dagger.
+# 3 rows = Dicke basis |D^2_w>, w = 0 .. 2;  2 columns = V|0>, V|1>.
+# columns below: Re(V[w,0]) Im(V[w,0]) Re(V[w,1]) Im(V[w,1])
+# V^dagger V = I to machine precision; check with verify.py
++1.88244658202334991e-01  +0.00000000000000000e+00  -5.75328026120433988e-01  -2.14832765465617997e-01
+-3.21887334830651739e-01  -3.88829365873806121e-01  -2.26113492552091094e-01  +5.79688977048530396e-01
+-2.90017503496586670e-01  +7.90982973415791824e-01  -4.57610320290432304e-01  +1.62082443160176948e-01

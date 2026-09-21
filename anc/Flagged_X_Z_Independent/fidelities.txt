@@ -1,0 +1,29 @@
+# channel: Flagged_X_Z_Independent
+#   flagged mixture  N(rho) = q |0><0|_Z (x) id(rho) + (1-q) |1><1|_Z (x) P_p(rho),
+#   P_p the Pauli channel ((1-p)/2, p/2, p/2, (1-p)/2) = binary symmetric channel
+# parameter: 0.4142135623730951
+# mixing q: 0.5
+# reference dimension d_R: 2
+# entanglement fidelity of the optimal isometric encoder/decoder pair,
+# indexed by the number of channel uses n
+#   n              fidelity
+    1    0.6464466094061962
+    2    0.6870387846812462
+    3    0.7070980315929515
+    4    0.7165773614621851
+    5    0.7232085833578055
+    6    0.7279760105406684
+    7    0.7314907345253038
+    8    0.7367078374908842
+    9    0.7415856671408043
+   10    0.7446872068500315
+   11    0.7466533087592615
+   12    0.7479079597906465
+   13    0.7487123801046237
+   14    0.7492683603781356
+   15    0.7496056047219574
+   16    0.7499205796510597
+   17    0.7501717005514995
+   18    0.7503535183393035
+   19    0.7504707961385090
+   20    0.7506160204204748
