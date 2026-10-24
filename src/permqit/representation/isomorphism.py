@@ -107,11 +107,13 @@ class BaseEndSnBlockDiagonalization(TransitionMatrix, metaclass=WeakRefMemoize):
         The isomorphism then maps the basis element i to block result[i] (which is an m_λ x m_λ matrix).
         """
         mat = self.coefficient_transition_matrix(StorageFormat.SCIPY_SPARSE)
+        # An identity transition (n <= 1) comes back in DIA format, which cannot be sliced.
+        mat = mat.tocsr()
         partition_idx = self.basis_to.partitions.index(partition)
         idx_in_basis = self.basis_to.basis_indices_start[partition_idx] # This is the start index of the coefficients corresponding to the block we want
         block_size = self.basis_to.basis_sizes[partition_idx]
 
-        block_dense = np.asarray(mat[idx_in_basis : idx_in_basis + block_size, :].todense())  # ty:ignore[not-subscriptable]
+        block_dense = np.asarray(mat[idx_in_basis : idx_in_basis + block_size, :].todense())
 
         return block_dense.reshape(
             (self.basis_to.block_sizes[partition_idx], self.basis_to.block_sizes[partition_idx], self.basis_from.size())

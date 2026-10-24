@@ -9,7 +9,9 @@ Dependencies: numpy, scipy.  Nothing else.
 Layout
 ------
   <channel>/fidelities.txt                    entanglement fidelity, indexed by n
-  <channel>/optimal_encoders/encoder_nNN.txt  the optimal encoder for that n
+  <channel>/optimal_encoders/encoder_nNN.npz  the optimal encoder for that n
+  <channel>/optimal_decoders/decoders_nNN.npz the matching decoder(s) for that channel
+  rains/optimal_values.txt, optimal_operators.npz   the Rains relative entropy numerics
   flagged_x_z_independent/optimal_decoders_n17/decoders_n17.npz
                                               decoder + Alice-POV blocks for n = 17
 
@@ -26,7 +28,8 @@ ENCODERS, every n and every channel.
   and moreover that it is an isometry -- equivalently that the Choi state is pure and supported
   on the single Young diagram lambda = (n).  We also check the shape (n+1 Dicke amplitudes).
 
-DECODERS, n = 17 of the flagged channel.
+DECODERS, every n of the depolarizing and amplitude damping channels, and n = 17 of the
+flagged channel.
   Each stored Choi block B (ordered (R, S), Heisenberg picture) must satisfy
       B >= 0                      (complete positivity)
       Tr_R B = I_m                (unitality of the adjoint, i.e. the decoder is trace preserving)
@@ -34,10 +37,17 @@ DECODERS, n = 17 of the flagged channel.
   and the optimizer leaves the rest at the trivial unital point I_R (x) I_m / d_R, which is
   reconstructed here and satisfies both conditions by inspection.
 
-FIDELITY, n = 17 of the flagged channel.
-  Recomputed from the stored operators and compared with fidelities.txt:
+FIDELITY, recomputed from the stored operators and compared with fidelities.txt:
       F = sum_k C(n,k) q^k (1-q)^(n-k) (1/d_R^2) sum_mu f_mu Re Tr(M_k^mu D_k^mu),
-  with f_mu the number of standard Young tableaux, obtained from binomials alone.
+  with f_mu the number of standard Young tableaux, obtained from binomials alone.  For the two
+  single-channel examples there is a single sector, so the weight is 1 and the sum over k drops.
+
+RAINS, r = 0.548.
+  Each stored sigma_n must be positive semidefinite, and the relative entropy recomputed from
+  the stored blocks,
+      D(rho^{(x)n} || sigma_n) = sum_blocks D([rho^{(x)n}]_b || [sigma_n]_b),
+  must reproduce the value in optimal_values.txt.  The sum is unweighted because the
+  multiplicities are already carried by the block normalisation of the LDUI decomposition.
 
 Usage
 -----
@@ -75,14 +85,8 @@ def read_fidelities(path):
 
 
 def read_encoder(path):
-    rows = []
-    with open(path) as fh:
-        for line in fh:
-            if line.startswith("#") or not line.strip():
-                continue
-            v = [float(x) for x in line.split()]
-            rows.append([complex(v[i], v[i + 1]) for i in range(0, len(v), 2)])
-    return np.array(rows, dtype=complex)
+    """The isometry V in the Dicke basis, from the per-n encoder archive."""
+    return np.asarray(np.load(path, allow_pickle=True)["encoder_isometry_dicke"], dtype=complex)
 
 
 def check_encoders(root, channel, tol, verbose):
@@ -90,7 +94,7 @@ def check_encoders(root, channel, tol, verbose):
     ok = True
     worst_iso, worst_n = 0.0, None
     for n, f in zip(ns, fids):
-        path = os.path.join(root, "optimal_encoders", f"encoder_n{n:02d}.txt")
+        path = os.path.join(root, "optimal_encoders", f"encoder_n{n:02d}.npz")
         if not os.path.exists(path):
             print(f"    n={n:3d}  MISSING {path}")
             ok = False
@@ -111,8 +115,60 @@ def check_encoders(root, channel, tol, verbose):
     return ok, ns, fids
 
 
+def check_decoder_file(path, d_R_expected=None):
+    """Load one decoder archive and return (F, min eigenvalue, worst unitality deviation)."""
+    d = np.load(path, allow_pickle=True)
+    d_R = int(d["d_R"])
+    labels = [eval(x) for x in d["decoder_0_labels"]]  # noqa: S307  (tuples written by builder)
+    F, min_eig, worst_unital = 0.0, 0.0, 0.0
+    for j, lab in enumerate(labels):
+        key = f"decoder_0_block_{j}"
+        if key not in d.files:
+            continue
+        B, M = d[key], d[f"alice_pov_0_block_{j}"]
+        m = B.shape[0] // d_R
+        eigs = np.linalg.eigvalsh(0.5 * (B + B.conj().T))
+        min_eig = min(min_eig, float(eigs.min()))
+        worst_unital = max(worst_unital, float(np.max(np.abs(
+            np.einsum("iris->rs", B.reshape(d_R, m, d_R, m)) - np.eye(m)))))
+        F += int(np.prod([syt(p) for p in lab])) * float(np.real(np.trace(M @ B))) / d_R ** 2
+    return F, min_eig, worst_unital
+
+
+def check_decoders_all_n(root, ns, fids, tol, verbose):
+    """Per-n decoders of a single-channel example: CP, unital, and the fidelity they achieve."""
+    dec_dir = os.path.join(root, "optimal_decoders")
+    if not os.path.isdir(dec_dir):
+        print("  decoders: not present")
+        return True
+    ok, checked, worst_delta, min_eig, worst_unital = True, 0, 0.0, 0.0, 0.0
+    for n, f in zip(ns, fids):
+        path = os.path.join(dec_dir, f"decoders_n{n:02d}.npz")
+        if not os.path.exists(path):
+            print(f"    n={n:3d}  MISSING {path}")
+            ok = False
+            continue
+        F, eig, unital = check_decoder_file(path)
+        checked += 1
+        min_eig, worst_unital = min(min_eig, eig), max(worst_unital, unital)
+        delta = F - f
+        good = eig > -1e-7 and unital < 1e-6 and abs(delta) < tol
+        ok &= good
+        if abs(delta) > abs(worst_delta):
+            worst_delta = delta
+        if verbose or not good:
+            print(f"    n={n:3d}  F={F:.16f}  delta={delta:+.1e}  "
+                  f"min eig={eig:+.1e}  |Tr_R B - I|={unital:.1e}"
+                  + ("" if good else "   <-- FAIL"))
+    print(f"  decoders: {checked} checked, all CP (min eig {min_eig:+.1e}) and unital "
+          f"(max |Tr_R B - I| = {worst_unital:.1e}); fidelity recomputed from the blocks "
+          f"agrees with fidelities.txt to {abs(worst_delta):.1e}"
+          + ("" if ok else "   <-- SOME FAILED"))
+    return ok
+
+
 def check_decoders_n17(root, fid_from_txt, tol, verbose):
-    path = os.path.join(root, "optimal_decoders_n17", "decoders_n17.npz")
+    path = os.path.join(root, "optimal_decoders", "decoders_n17.npz")
     if not os.path.exists(path):
         print("  decoders (n=17): not present")
         return True
@@ -157,6 +213,69 @@ def check_decoders_n17(root, fid_from_txt, tol, verbose):
     return ok
 
 
+def relative_entropy_bits(a, b, tol=1e-12):
+    """D(a||b) in bits for one block pair."""
+    a = np.atleast_2d(np.asarray(a, dtype=complex))
+    b = np.atleast_2d(np.asarray(b, dtype=complex))
+    a, b = (a + a.conj().T) / 2, (b + b.conj().T) / 2
+    va = np.linalg.eigvalsh(a)
+    vb, Ub = np.linalg.eigh(b)
+    keep = va > tol
+    if not keep.any():
+        return 0.0
+    log_b = (Ub * np.where(vb > tol, np.log2(np.maximum(vb, tol)), 0.0)) @ Ub.conj().T
+    return float(np.sum(va[keep] * np.log2(va[keep]))) - float(np.real(np.trace(a @ log_b)))
+
+
+def check_rains(here, tol, verbose):
+    """The Rains optimizers: PSD, and the relative entropy they achieve."""
+    root = os.path.join(here, "rains")
+    values_path = os.path.join(root, "optimal_values.txt")
+    ops_path = os.path.join(root, "optimal_operators.npz")
+    if not (os.path.exists(values_path) and os.path.exists(ops_path)):
+        return True
+    print("=" * 78)
+    print("  rains")
+    print("=" * 78)
+
+    stored = {}
+    with open(values_path) as fh:
+        for line in fh:
+            if line.startswith("#") or not line.strip():
+                continue
+            parts = line.split()
+            stored[int(parts[0])] = float(parts[1])
+
+    d = np.load(ops_path, allow_pickle=True)
+    ok, min_eig, worst = True, np.inf, 0.0
+    for n in [int(x) for x in d["n_values"]]:
+        dims = [int(x) for x in d[f"n{n}_sigma_dims"]]
+        total = 0.0
+        for j, dim in enumerate(dims):
+            if dim == 0:
+                continue
+            sigma, rho_b = d[f"n{n}_sigma_block_{j}"], d[f"n{n}_rho_block_{j}"]
+            herm = (sigma + sigma.conj().T) / 2
+            min_eig = min(min_eig, float(np.linalg.eigvalsh(herm).min()))
+            total += relative_entropy_bits(rho_b, sigma)
+        delta = total - stored[n]
+        good = abs(delta) < tol
+        ok &= good
+        worst = max(worst, abs(delta))
+        if verbose or not good:
+            print(f"    n={n:3d}  R={total:.16f}  stored {stored[n]:.16f}  delta {delta:+.1e}"
+                  + ("" if good else "   <-- FAIL"))
+    ns = sorted(stored)
+    print(f"  rains: {len(ns)} values checked at r = {float(d['r'])}, all sigma_n PSD "
+          f"(min eig {min_eig:+.1e}); relative entropy recomputed from the blocks agrees "
+          f"with optimal_values.txt to {worst:.1e}"
+          + ("" if ok else "   <-- SOME FAILED"))
+    print(f"  R/n decreases from {stored[ns[0]]/ns[0]:.9f} (n={ns[0]}) to "
+          f"{stored[ns[-1]]/ns[-1]:.9f} (n={ns[-1]}), i.e. the bound is non-additive")
+    print()
+    return ok
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -192,8 +311,10 @@ def main():
                   f"({'ABOVE' if best > 0.75 else 'below'} 3/4 by {abs(best - 0.75):.3e}), "
                   f"first n with F > 3/4: n = {min(n for n, f in zip(ns, fids) if f > 0.75)}")
         else:
+            ok &= check_decoders_all_n(root, ns, fids, args.tol, args.verbose)
             print(f"  max over n: F = {max(fids):.16f} at n = {ns[int(np.argmax(fids))]}")
         print()
+    ok &= check_rains(here, args.tol, args.verbose)
     print("ALL CHECKS PASSED" if ok else "SOME CHECKS FAILED")
     return 0 if ok else 1
 
