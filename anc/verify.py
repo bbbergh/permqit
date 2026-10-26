@@ -213,22 +213,91 @@ def check_decoders_n17(root, fid_from_txt, tol, verbose):
     return ok
 
 
-def relative_entropy_bits(a, b, tol=1e-12):
-    """D(a||b) in bits for one block pair."""
-    a = np.atleast_2d(np.asarray(a, dtype=complex))
-    b = np.atleast_2d(np.asarray(b, dtype=complex))
-    a, b = (a + a.conj().T) / 2, (b + b.conj().T) / 2
-    va = np.linalg.eigvalsh(a)
-    vb, Ub = np.linalg.eigh(b)
-    keep = va > tol
-    if not keep.any():
+def _split(vector, sizes):
+    """Undo the flat concatenation of square blocks."""
+    out, at = [], 0
+    for m in sizes:
+        out.append(vector[at:at + m * m].reshape(m, m))
+        at += m * m
+    return out
+
+
+def _concat(blocks):
+    return np.concatenate([np.asarray(b).reshape(-1) for b in blocks])
+
+
+def _gamma(archive, prefix, blocks, scaled):
+    """Partial transpose on B, as the stored sparse map.
+
+    ``scaled`` selects the convention the corresponding program used: the trace-norm
+    constraint on sigma acts on rescaled blocks, the operator-norm constraint on gamma on raw
+    ones.
+    """
+    rows = archive[prefix + "gamma_row"]
+    cols = archive[prefix + "gamma_col"]
+    data = archive[prefix + "gamma_data"]
+    shape = tuple(int(x) for x in archive[prefix + "gamma_shape"])
+    flat = _concat(blocks)
+    if scaled:
+        flat = flat / archive[prefix + "wA"]
+    image = np.zeros(shape[0], dtype=complex)
+    np.add.at(image, rows, data * flat[cols])
+    if scaled:
+        image = archive[prefix + "wB"] * image
+    return _split(image, [int(m) for m in archive[prefix + "block_m_B"]])
+
+
+def relative_entropy_bits(rho, sigma, shift=0.0, tol=1e-14):
+    """Umegaki D(rho || sigma + shift*I) in bits, rho possibly singular.
+
+    Eigenvalues of rho below ``tol * max eigenvalue`` are treated as zero, i.e. off its
+    support.  Every strictly positive eigenvalue of sigma is used: thresholding them away
+    would drop exactly the near-null directions that carry most of -Tr[rho log sigma].
+    ``shift`` is applied to sigma's eigenvalues rather than to its entries, because the
+    comparator is mixed with a multiple of I/4^n that is below the roundoff of the entries.
+    """
+    rho = np.atleast_2d(np.asarray(rho, dtype=complex))
+    sigma = np.atleast_2d(np.asarray(sigma, dtype=complex))
+    if rho.size == 0:
         return 0.0
-    log_b = (Ub * np.where(vb > tol, np.log2(np.maximum(vb, tol)), 0.0)) @ Ub.conj().T
-    return float(np.sum(va[keep] * np.log2(va[keep]))) - float(np.real(np.trace(a @ log_b)))
+    wr, Ur = np.linalg.eigh((rho + rho.conj().T) / 2)
+    scale = max(1e-300, float(np.abs(wr).max()))
+    keep = wr > tol * scale
+    wr, Ur = wr[keep], Ur[:, keep]
+    if wr.size == 0:
+        return 0.0
+    ws, Us = np.linalg.eigh((sigma + sigma.conj().T) / 2)
+    if shift > 0:
+        ws = np.maximum(ws, 0.0) + shift
+    overlap = np.abs(Ur.conj().T @ Us) ** 2
+    weight = wr @ overlap
+    if np.any((ws <= 0) & (weight > 1e-300)):
+        return np.inf
+    pos = ws > 0
+    nats = float(np.sum(wr * np.log(wr)) - np.sum(weight[pos] * np.log(ws[pos])))
+    return nats / np.log(2.0)
+
+
+def trace_rho_log_bits(rho, omega, tol=1e-14):
+    """Tr[rho log omega] in bits, using every strictly positive eigenvalue of omega."""
+    rho = np.atleast_2d(np.asarray(rho, dtype=complex))
+    omega = np.atleast_2d(np.asarray(omega, dtype=complex))
+    wr, Ur = np.linalg.eigh((rho + rho.conj().T) / 2)
+    scale = max(1e-300, float(np.abs(wr).max()))
+    keep = wr > tol * scale
+    wr, Ur = wr[keep], Ur[:, keep]
+    if wr.size == 0:
+        return 0.0
+    ws, Us = np.linalg.eigh((omega + omega.conj().T) / 2)
+    weight = wr @ (np.abs(Ur.conj().T @ Us) ** 2)
+    if np.any((ws <= 0) & (weight > 1e-300)):
+        return -np.inf
+    pos = ws > 0
+    return float(np.sum(weight[pos] * np.log(ws[pos]))) / np.log(2.0)
 
 
 def check_rains(here, tol, verbose):
-    """The Rains optimizers: PSD, and the relative entropy they achieve."""
+    """The Rains and measured Rains optimizers, and the two values they achieve."""
     root = os.path.join(here, "rains")
     values_path = os.path.join(root, "optimal_values.txt")
     ops_path = os.path.join(root, "optimal_operators.npz")
@@ -244,34 +313,69 @@ def check_rains(here, tol, verbose):
             if line.startswith("#") or not line.strip():
                 continue
             parts = line.split()
-            stored[int(parts[0])] = float(parts[1])
+            stored[int(parts[0])] = (float(parts[1]), float(parts[3]))
 
     d = np.load(ops_path, allow_pickle=True)
-    ok, min_eig, worst = True, np.inf, 0.0
+    ok = True
+    worst = {"R": 0.0, "R_M": 0.0, "sigma_eig": np.inf, "omega_eig": np.inf,
+             "dominance": np.inf, "tn": 0.0, "opnorm": 0.0, "bracket": -np.inf}
     for n in [int(x) for x in d["n_values"]]:
-        dims = [int(x) for x in d[f"n{n}_sigma_dims"]]
-        total = 0.0
-        for j, dim in enumerate(dims):
-            if dim == 0:
-                continue
-            sigma, rho_b = d[f"n{n}_sigma_block_{j}"], d[f"n{n}_rho_block_{j}"]
-            herm = (sigma + sigma.conj().T) / 2
-            min_eig = min(min_eig, float(np.linalg.eigvalsh(herm).min()))
-            total += relative_entropy_bits(rho_b, sigma)
-        delta = total - stored[n]
-        good = abs(delta) < tol
+        if n not in stored:          # a partial archive: the table has not caught up yet
+            continue
+        p = f"n{n}_"
+        sizes = [int(m) for m in d[p + "block_m"]]
+        trwA, trwB = d[p + "trwA"], d[p + "trwB"]
+        support = [int(b) for b in d[p + "support_ids"]]
+        rho = [d[f"{p}rho_block_{j}"] for j in range(len(sizes))]
+        sigma = [d[f"{p}sigma_block_{j}"] for j in range(len(sizes))]
+        omega = [d[f"{p}omega_block_{j}"] for j in range(len(sizes))]
+        gamma = [d[f"{p}gamma_block_{j}"] for j in range(len(sizes))]
+        isometry = [d[f"{p}support_isometry_{j}"] for j in range(len(sizes))]
+
+        shift = d[p + "sigma_shift"] if p + "sigma_shift" in d.files else np.zeros(len(sizes))
+        value_R = sum(c * relative_entropy_bits(r, s, shift=t)
+                      for c, r, s, t in zip(trwA, rho, sigma, shift))
+        value_M = sum(trwA[b] * trace_rho_log_bits(isometry[b].T @ rho[b] @ isometry[b],
+                                                   isometry[b].T @ omega[b] @ isometry[b])
+                      for b in support)
+        trace_norm = sum(c * float(np.sum(np.abs(np.linalg.eigvalsh((x + x.conj().T) / 2))))
+                         for c, x in zip(trwB, _gamma(d, p, sigma, scaled=True)))
+        op_norm = max(float(np.abs(np.linalg.eigvalsh((x + x.conj().T) / 2)).max())
+                      for x in _gamma(d, p, gamma, scaled=False) if x.size)
+        sigma_eig = min(float(np.linalg.eigvalsh((x + x.conj().T) / 2).min()) for x in sigma)
+        omega_eig = min(float(np.linalg.eigvalsh((x + x.conj().T) / 2).min()) for x in omega)
+        dominance = min(float(np.linalg.eigvalsh(((g - w) + (g - w).conj().T) / 2).min())
+                        for g, w in zip(gamma, omega))
+
+        dR, dM = value_R - stored[n][0], value_M - stored[n][1]
+        good = (abs(dR) < tol and abs(dM) < tol and sigma_eig > -1e-7 and omega_eig > -1e-7
+                and dominance > -1e-7 and trace_norm < 1 + 1e-6 and op_norm < 1 + 1e-6
+                and value_M <= value_R + 1e-7)
         ok &= good
-        worst = max(worst, abs(delta))
+        worst["R"] = max(worst["R"], abs(dR))
+        worst["R_M"] = max(worst["R_M"], abs(dM))
+        worst["sigma_eig"] = min(worst["sigma_eig"], sigma_eig)
+        worst["omega_eig"] = min(worst["omega_eig"], omega_eig)
+        worst["dominance"] = min(worst["dominance"], dominance)
+        worst["tn"] = max(worst["tn"], trace_norm)
+        worst["opnorm"] = max(worst["opnorm"], op_norm)
+        worst["bracket"] = max(worst["bracket"], value_M - value_R)
         if verbose or not good:
-            print(f"    n={n:3d}  R={total:.16f}  stored {stored[n]:.16f}  delta {delta:+.1e}"
+            print(f"    n={n:3d}  R={value_R:.12f} ({dR:+.1e})  R_M={value_M:.12f} ({dM:+.1e})"
                   + ("" if good else "   <-- FAIL"))
+
     ns = sorted(stored)
-    print(f"  rains: {len(ns)} values checked at r = {float(d['r'])}, all sigma_n PSD "
-          f"(min eig {min_eig:+.1e}); relative entropy recomputed from the blocks agrees "
-          f"with optimal_values.txt to {worst:.1e}"
+    print(f"  {len(ns)} values checked at r = {float(d['r'])}, n = {ns[0]}..{ns[-1]}")
+    print(f"  sigma: PSD (min eig {worst['sigma_eig']:+.1e}), "
+          f"||sigma^T_B||_1 = {worst['tn']:.9f} <= 1")
+    print(f"  omega: PSD (min eig {worst['omega_eig']:+.1e}), gamma - omega PSD "
+          f"(min eig {worst['dominance']:+.1e}), ||gamma^T_B||_inf = {worst['opnorm']:.9f} <= 1")
+    print(f"  values recomputed from the stored blocks agree with optimal_values.txt to "
+          f"{max(worst['R'], worst['R_M']):.1e}; R_M <= R everywhere "
+          f"(worst R_M - R = {worst['bracket']:+.2e})")
+    print(f"  per copy, R/n falls {stored[ns[0]][0]/ns[0]:.6f} -> {stored[ns[-1]][0]/ns[-1]:.6f} "
+          f"while R_M/n rises {stored[ns[0]][1]/ns[0]:.6f} -> {stored[ns[-1]][1]/ns[-1]:.6f}"
           + ("" if ok else "   <-- SOME FAILED"))
-    print(f"  R/n decreases from {stored[ns[0]]/ns[0]:.9f} (n={ns[0]}) to "
-          f"{stored[ns[-1]]/ns[-1]:.9f} (n={ns[-1]}), i.e. the bound is non-additive")
     print()
     return ok
 

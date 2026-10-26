@@ -1,13 +1,20 @@
-# Rains relative entropy of the Wang-Duan state, r = 0.548
+# Rains and measured Rains relative entropy of the Wang-Duan state
 #
-#   R(rho^{(x)n}) = min_{sigma in PPT'} D(rho^{(x)n} || sigma),
-#   PPT' = {sigma >= 0 : ||sigma^{T_B}||_1 <= 1},  in bits.
+# r = 0.548
 #
-# The optimization is carried out in the block basis of the LDUI algebra
-# A_LDUI^{(x)n} under the action of G^n x| S_n, as described in the text.
-# The optimizing sigma_n are in optimal_operators.npz, block by block.
+#   R(rho^{(x)n})   = min   D(rho^{(x)n} || sigma),  sigma in PPT'
+#   R_M(rho^{(x)n}) = max   Tr[rho^{(x)n} log omega],
+#                     omega > 0 with some gamma >= omega, ||gamma^{T_B}||_inf <= 1
+#   PPT' = {sigma >= 0 : ||sigma^{T_B}||_1 <= 1}.  Both in bits.
 #
-# rho(r), r = 0.548, in the product basis (00, 01, 10, 11):
+# R comes from an exactly feasible sigma and is a certified upper bound;
+# R_M from an exactly feasible (omega, gamma) and is a certified lower bound.
+# R_M <= R always, and both converge to the same limit per copy.
+#
+# The optimizers are in optimal_operators.npz, block by block in the basis of
+# the U(1)^n x| S_n invariant algebra; see verify.py.
+#
+# rho(r), product basis (00, 01, 10, 11):
 #   +1.24999999999999972e-01  +0.00000000000000000e+00  +0.00000000000000000e+00  +0.00000000000000000e+00
 #   +0.00000000000000000e+00  +7.22229743827178527e-01  +3.32164232565651973e-01  +0.00000000000000000e+00
 #   +0.00000000000000000e+00  +3.32164232565651973e-01  +1.52770256172821556e-01  +0.00000000000000000e+00
@@ -19,8 +26,14 @@
 #   +0.00000000000000000e+00  +1.76776695296636865e-01  +7.69999999999999574e-02  +0.00000000000000000e+00
 #   +0.00000000000000000e+00  +0.00000000000000000e+00  +0.00000000000000000e+00  +1.25000000000000000e-01
 #
-# columns:  n   R(rho^{(x)n})   R(rho^{(x)n})/n
-    1   3.89308879579082168e-01   3.89308879579082168e-01
-    2   7.67369307242082410e-01   3.83684653621041205e-01
-    3   1.14010416360802758e+00   3.80034721202675840e-01
-    4   1.50963169255662244e+00   3.77407923139155610e-01
+# columns:  n   R   R/n   R_M   R_M/n
+    1   3.89308864354292683e-01   3.89308864354292683e-01   3.02272785311990921e-01   3.02272785311990921e-01
+    2   7.67369228522349567e-01   3.83684614261174783e-01   6.12208074353527643e-01   3.06104037176763821e-01
+    3   1.14010394605295828e+00   3.80034648684319409e-01   9.26630021903455892e-01   3.08876673967818649e-01
+    4   1.50963057726223249e+00   3.77407644315558122e-01   1.24421047580923294e+00   3.11052618952308235e-01
+    5   1.87690236010169698e+00   3.75380472020339417e-01   1.56421323293514569e+00   3.12842646587029150e-01
+    6   2.24245309961343908e+00   3.73742183268906514e-01   1.88617001453625388e+00   3.14361669089375628e-01
+    7   2.60662125762104724e+00   3.72374465374435304e-01   2.20975516907950409e+00   3.15679309868500568e-01
+    8   2.96964210702333853e+00   3.71205263377917316e-01   2.53473073505180357e+00   3.16841341881475447e-01
+    9   3.33168516025712114e+00   3.70187240028569009e-01   2.86091239052477908e+00   3.17879154502753225e-01
+   10   3.69288104076763934e+00   3.69288104076763934e-01   3.18815449249318794e+00   3.18815449249318816e-01
